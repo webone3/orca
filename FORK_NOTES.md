@@ -65,14 +65,30 @@ sending the notes to a chat with fewer steps.
 
 - **What:** a button in the browser toolbar, left of Annotate. One press moves the workspace's
   chat tab into a split on the right of the browser; a second press folds it back into the tabs.
-  It uses the existing tab split, so the divider still drags to resize. Right-click the button
-  to put the chat on the left or the right; the choice is remembered.
+  It uses the existing tab split, so the divider still drags to resize. The small arrow
+  beside the button puts the chat on the left or the right; the choice is remembered.
 - **Why:** the same layout was already possible by dragging a tab to the pane edge, but that is
   hidden and has to be redone by hand.
 - **Files:** `src/renderer/src/components/browser-pane/assemble-chrome/toolbar/`
   `chat-beside-browser.ts` (new, + test), `chat-beside-browser-side.ts` (new),
   `browser-chat-beside-button.tsx` (new),
   `browser-chrome-toolbar.tsx`
+
+### 4. Open dev servers automatically (`feat/auto-open-dev-server`)
+
+- **What:** when a terminal (or agent) in the active workspace starts a server and prints its
+  URL, the page opens in an in-app browser tab. Once per server; a server that stops and starts
+  again opens again. No duplicate if a tab is already on that address. Only the first server a
+  command starts gets a tab. Setting: Settings > Browser > "Open dev servers automatically"
+  (`openDevServersInBrowser`, on unless set to false).
+- **Why:** after `npm run dev` the port had to be found and clicked by hand.
+- **Note for upstream:** they may want this off by default.
+- **Files:** `src/renderer/src/lib/workspace-ports/dev-server-auto-open.ts` (new, + test),
+  `src/renderer/src/components/ports/WorkspaceDevServerAutoOpen.tsx` (new),
+  `src/renderer/src/app-shell/AppBackgroundServices.tsx`,
+  `src/shared/global-settings-types.ts`,
+  `src/renderer/src/components/settings/browser/routing/BrowserDevServerAutoOpenSetting.tsx`
+  (new), `src/renderer/src/components/settings/browser/BrowserPane.tsx`
 
 ### Not built (already in Orca)
 
