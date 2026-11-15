@@ -8,16 +8,29 @@ import { createTestStore } from '@/store/slices/browser/browser-slice-test-harne
 
 import { useBrowserPageAnnotationSend } from './use-browser-page-annotation-send'
 
-const state = vi.hoisted((): { store?: ReturnType<typeof createTestStore> } => ({}))
-vi.mock('@/store/index', () => ({
-  useAppStore: (
-    selector: (value: ReturnType<ReturnType<typeof createTestStore>['getState']>) => unknown
-  ) => {
+const state = vi.hoisted(
+  (): {
+    store?: ReturnType<typeof createTestStore>
+    sendDirect: ReturnType<typeof vi.fn<(args: { prompt: string }) => boolean>>
+  } => ({ sendDirect: vi.fn(() => false) })
+)
+vi.mock('@/store/index', () => {
+  const requireStore = (): ReturnType<typeof createTestStore> => {
     if (!state.store) {
       throw new Error('Missing test store')
     }
-    return state.store(selector)
+    return state.store
   }
+  return {
+    useAppStore: Object.assign(
+      (selector: (value: ReturnType<ReturnType<typeof createTestStore>['getState']>) => unknown) =>
+        requireStore()(selector),
+      { getState: () => requireStore().getState() }
+    )
+  }
+})
+vi.mock('@/components/editor/review-note-delivery/send-notes-to-direct-target', () => ({
+  sendNotesToDirectTarget: state.sendDirect
 }))
 vi.mock('@/i18n/i18n', () => ({ translate: (_key: string, fallback: string) => fallback }))
 
@@ -82,10 +95,14 @@ function makeAnnotation(pageId: string, id = 'annotation-1'): BrowserPageAnnotat
 
 let store: ReturnType<typeof createTestStore>
 
+let openTargetMode: ReturnType<typeof vi.fn<(args: { id: string }) => void>>
 beforeEach(() => {
   store = createTestStore()
   state.store = store
+  openTargetMode = vi.fn()
+  state.sendDirect.mockReset().mockReturnValue(false)
   store.setState({
+    openAgentSendPopoverTargetMode: openTargetMode,
     closeAgentSendPopoverTargetMode: vi.fn()
   })
   store.getState().addBrowserPageAnnotation(makeAnnotation('page-1'))
@@ -127,6 +144,54 @@ describe('website annotations handed to a send', () => {
     await act(async () => deliverFirst({ delivered: true }))
     expect(notes().map((note) => note.id)).toEqual(['second'])
     act(secondDelivered)
+    expect(notes()).toEqual([])
+  })
+})
+
+describe('website annotations sent without the agent picker', () => {
+  it('sends straight to the obvious agent and leaves the picker closed', () => {
+    state.sendDirect.mockReturnValue(true)
+    const view = mount()
+
+    act(() => view.result.current.handleAnnotationTraySendOpenChange(true))
+
+    expect(state.sendDirect).toHaveBeenCalledWith(
+      expect.objectContaining({
+        worktreeId: 'folder-1',
+        prompt: expect.stringContaining('Fix this button')
+      })
+    )
+    expect(openTargetMode).not.toHaveBeenCalled()
+  })
+
+  it('opens the picker when no single agent is the obvious target', () => {
+    const view = mount()
+
+    act(() => view.result.current.handleAnnotationTraySendOpenChange(true))
+
+    expect(openTargetMode).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'browser-annotations:page-1:tray' })
+    )
+  })
+
+  it('sends a note added in the same event and removes it once delivered', () => {
+    state.sendDirect.mockReturnValue(true)
+    const view = mount()
+
+    act(() => {
+      store.getState().addBrowserPageAnnotation({
+        ...makeAnnotation('page-1', 'second'),
+        comment: 'Second note'
+      })
+      view.result.current.sendBrowserAnnotationsNow()
+    })
+
+    const sent = state.sendDirect.mock.calls[0][0] as {
+      prompt: string
+      onPromptDelivered: () => void
+    }
+    expect(sent.prompt).toContain('Second note')
+    act(() => sent.onPromptDelivered())
     expect(notes()).toEqual([])
   })
 })
