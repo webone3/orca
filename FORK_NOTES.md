@@ -90,6 +90,13 @@ sending the notes to a chat with fewer steps.
   `src/renderer/src/components/settings/browser/routing/BrowserDevServerAutoOpenSetting.tsx`
   (new), `src/renderer/src/components/settings/browser/BrowserPane.tsx`
 
+### 5. Thin split divider (`feat/thin-split-divider`)
+
+- **What:** the line between split tab groups is 1px at rest and 3px while hovered or dragged.
+  The 6px grab area is unchanged. Upstream draws it 3px at all times.
+- **Why:** with chat beside the page the 3px line read as a heavy bar.
+- **Files:** `src/renderer/src/assets/main.css`
+
 ### Not built (already in Orca)
 
 - **Hiding the project sidebar:** Cmd/Ctrl+B.
