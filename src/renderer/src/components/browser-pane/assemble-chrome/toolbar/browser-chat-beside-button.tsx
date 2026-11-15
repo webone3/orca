@@ -1,4 +1,4 @@
-import { PanelLeft, PanelRight } from 'lucide-react'
+import { ChevronDown, PanelLeft, PanelRight } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -17,12 +17,12 @@ import {
   type ChatBesideBrowserSide
 } from './chat-beside-browser-side'
 import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuRadioGroup,
-  ContextMenuRadioItem,
-  ContextMenuTrigger
-} from '@/components/ui/context-menu'
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger
+} from '@/components/ui/dropdown-menu'
 
 /** `moveToSide` places the chat on the chosen side even when it is already showing. */
 function toggleChatBesideBrowser(
@@ -93,45 +93,52 @@ export function BrowserChatBesideButton({
   const label = t('components.browser-pane.chatBeside.label', 'Chat beside page')
   const Icon = side === 'left' ? PanelLeft : PanelRight
   return (
-    <ContextMenu>
+    <span className="flex shrink-0 items-center">
       <Tooltip>
         <TooltipTrigger asChild>
-          <ContextMenuTrigger asChild>
-            <Button
-              size="icon"
-              variant="ghost"
-              className="h-7 w-7 shrink-0"
-              aria-label={label}
-              onClick={() => toggleChatBesideBrowser(worktreeId, browserPageId)}
-            >
-              <Icon className="size-4" />
-            </Button>
-          </ContextMenuTrigger>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-7 w-7"
+            aria-label={label}
+            onClick={() => toggleChatBesideBrowser(worktreeId, browserPageId)}
+          >
+            <Icon className="size-4" />
+          </Button>
         </TooltipTrigger>
         <TooltipContent side="bottom" sideOffset={6}>
-          {t(
-            'components.browser-pane.chatBeside.tooltip',
-            'Chat beside page · right-click to choose the side'
-          )}
+          {label}
         </TooltipContent>
       </Tooltip>
-      <ContextMenuContent>
-        <ContextMenuRadioGroup
-          value={side}
-          onValueChange={(value) => {
-            setChatBesideBrowserSide(value as ChatBesideBrowserSide)
-            // Choosing a side puts the chat there, whether or not it was showing.
-            toggleChatBesideBrowser(worktreeId, browserPageId, true)
-          }}
-        >
-          <ContextMenuRadioItem value="left">
-            {t('components.browser-pane.chatBeside.left', 'Chat on the left')}
-          </ContextMenuRadioItem>
-          <ContextMenuRadioItem value="right">
-            {t('components.browser-pane.chatBeside.right', 'Chat on the right')}
-          </ContextMenuRadioItem>
-        </ContextMenuRadioGroup>
-      </ContextMenuContent>
-    </ContextMenu>
+      <DropdownMenu modal={false}>
+        <DropdownMenuTrigger asChild>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-7 w-4"
+            aria-label={t('components.browser-pane.chatBeside.chooseSide', 'Choose the chat side')}
+          >
+            <ChevronDown className="size-3" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuRadioGroup
+            value={side}
+            onValueChange={(value) => {
+              setChatBesideBrowserSide(value as ChatBesideBrowserSide)
+              // Choosing a side puts the chat there, whether or not it was showing.
+              toggleChatBesideBrowser(worktreeId, browserPageId, true)
+            }}
+          >
+            <DropdownMenuRadioItem value="left">
+              {t('components.browser-pane.chatBeside.left', 'Chat on the left')}
+            </DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="right">
+              {t('components.browser-pane.chatBeside.right', 'Chat on the right')}
+            </DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </span>
   )
 }
