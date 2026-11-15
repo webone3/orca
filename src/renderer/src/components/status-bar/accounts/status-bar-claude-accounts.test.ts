@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type {
   ClaudeManagedAccountSummary,
   ClaudeRateLimitAccountsState
-} from '../../../../../shared/managed-account-types'
+} from '../../../../../shared/agent-accounts/managed-account-types'
 import {
   buildClaudeStatusSwitchGroups,
   signedInClaudeAccountCount
@@ -149,5 +149,45 @@ describe('Claude status switcher identities', () => {
         usageAccountId: 'usable'
       })
     ])
+  })
+  it.each([
+    ['Ubuntu', 'a'],
+    ['ubuntu', 'b']
+  ])('uses the exact selected record for conflicting historical lane %s', (distro, selectedId) => {
+    const state: ClaudeRateLimitAccountsState = {
+      accounts: [
+        account('a', 'eng@example.com', {
+          organizationUuid: ORG,
+          managedAuthRuntime: 'wsl',
+          wslDistro: 'Ubuntu'
+        }),
+        account('b', 'eng@example.com', {
+          organizationUuid: ORG,
+          managedAuthRuntime: 'wsl',
+          wslDistro: 'ubuntu'
+        })
+      ],
+      activeAccountId: null,
+      activeAccountIdsByRuntime: { host: null, wsl: { Ubuntu: 'a', ubuntu: 'b' } }
+    }
+    const group = buildClaudeStatusSwitchGroups(state, { runtime: 'wsl', wslDistro: distro })[1]
+    expect(group.targets.find((row) => row.active)?.id).toBe(selectedId)
+    expect(group.targets.find((row) => row.id === null)?.active).toBe(false)
+    expect(group.runtimeTarget.wslDistro).toBe(distro)
+  })
+  it('keeps an ambiguous lane distinct from default, then recognizes an explicit clear', () => {
+    const state: ClaudeRateLimitAccountsState = {
+      accounts: [],
+      activeAccountId: null,
+      activeAccountIdsByRuntime: { host: null, wsl: { Ubuntu: 'a', ubuntu: 'b' } }
+    }
+    const target = { runtime: 'wsl' as const, wslDistro: 'uBuNtU' }
+    expect(
+      buildClaudeStatusSwitchGroups(state, target)[1].targets.find((row) => row.id === null)?.active
+    ).toBe(false)
+    state.activeAccountIdsByRuntime = { host: null, wsl: { Ubuntu: null, ubuntu: null } }
+    expect(
+      buildClaudeStatusSwitchGroups(state, target)[1].targets.find((row) => row.id === null)?.active
+    ).toBe(true)
   })
 })

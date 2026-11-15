@@ -163,8 +163,8 @@ export function ClaudeSwitcherForOwner({
         void handleRunningClaudeSessionsAfterSwitch({
           owner: runtimeTarget,
           target,
-          before: { state: accountState, accountId: previousActiveAccountId },
-          after: { state: next, accountId: nextActiveAccountId }
+          before: { state: accountState, accountId: previousActiveAccountId ?? null },
+          after: { state: next, accountId: nextActiveAccountId ?? null }
         })
       }
     } catch (error) {
@@ -367,8 +367,7 @@ export function ClaudeSwitcherForOwner({
       }
       accountLabel={
         !hasActiveRuntimeEnvironment
-          ? (selectedGroup?.targets.find((target) => target.active)?.label ??
-            t('auto.components.status.bar.StatusBar.c676918adc', 'System default'))
+          ? selectedGroup?.targets.find((target) => target.active)?.label
           : undefined
       }
       topContent={

@@ -1,4 +1,4 @@
-import type { RateLimitState } from '../../../../../shared/rate-limit-types'
+import type { RateLimitState } from '../../../../../shared/agent-usage/rate-limits/rate-limit-types'
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import {
   fetchProviderAccountsSnapshot,

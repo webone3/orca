@@ -4,8 +4,8 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { useAppStore } from '@/store/index'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { getDefaultSettings } from '../../../../../shared/constants'
-import { createEmptyRateLimitState } from '../../../../../shared/rate-limit-state-factory'
-import type { ProviderRateLimits } from '../../../../../shared/rate-limit-types'
+import { createEmptyRateLimitState } from '../../../../../shared/agent-usage/rate-limits/rate-limit-state-factory'
+import type { ProviderRateLimits } from '../../../../../shared/agent-usage/rate-limits/rate-limit-types'
 import type { ProviderAccountsSnapshot } from '@/runtime/provider-accounts/observations/runtime-provider-accounts-client'
 import { ClaudeSwitcherForOwner } from './ClaudeSwitcherForOwner'
 import { CodexSwitcherMenu } from './CodexSwitcherMenu'
@@ -86,6 +86,8 @@ beforeEach(() => {
     .mockImplementation(async (_target, method) => (method === 'accounts.list' ? snapshot() : {}))
   Object.assign(window, {
     api: {
+      claudeAccounts: { list: async () => snapshot().claude },
+      codexAccounts: { list: async () => snapshot().codex },
       runtimeEnvironments: {
         subscribe: async (
           _args: unknown,
@@ -170,4 +172,63 @@ it('cannot dispatch a paired runtime change through desktop quota IPC', async ()
     await result.current.handleSelectRuntime(wsl)
   })
   expect(refreshLocal).not.toHaveBeenCalled()
+})
+
+it.each([
+  { runtime: 'host' as const, wslDistro: null },
+  { runtime: 'wsl' as const, wslDistro: 'Debian' }
+])(
+  'cannot spend another target credit while showing WSL Ubuntu over $runtime/$wslDistro',
+  async (target) => {
+    let credits = 1
+    useAppStore.setState({
+      rateLimits: createEmptyRateLimitState({ codexTarget: target }),
+      consumeCodexRateLimitResetCredit: async () => {
+        credits -= 1
+      }
+    })
+    const offer = {
+      ...usage('codex', 90),
+      rateLimitResetCredits: { availableCount: 1, nextExpiresAt: null }
+    }
+    const wslOwner = { target: { kind: 'local' as const }, wslHostDistro: 'Ubuntu' }
+    const { result } = renderHook(() => useCodexSwitcherController(offer, wslOwner))
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(result.current.canRedeemReset).toBe(false)
+    await act(async () => {
+      await result.current.handleConfirmReset()
+    })
+    expect(credits).toBe(1)
+  }
+)
+it('rejects a stale desktop reset confirmation after the global target changes to WSL', async () => {
+  let credits = 1
+  useAppStore.setState({
+    consumeCodexRateLimitResetCredit: async () => {
+      credits -= 1
+    }
+  })
+  const offer = {
+    ...usage('codex', 90),
+    rateLimitResetCredits: { availableCount: 1, nextExpiresAt: null }
+  }
+  const desktopOwner = { target: { kind: 'local' as const }, wslHostDistro: null }
+  const { result } = renderHook(() => useCodexSwitcherController(offer, desktopOwner))
+  await act(async () => {
+    await Promise.resolve()
+  })
+  const oldConfirm = result.current.handleConfirmReset
+  act(() =>
+    useAppStore.setState({
+      rateLimits: createEmptyRateLimitState({
+        codexTarget: { runtime: 'wsl', wslDistro: 'Debian' }
+      })
+    })
+  )
+  await act(async () => {
+    await oldConfirm()
+  })
+  expect(credits).toBe(1)
 })

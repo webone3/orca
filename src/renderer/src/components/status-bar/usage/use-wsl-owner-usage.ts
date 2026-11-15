@@ -1,17 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAppStore } from '@/store'
+import { createNonSecureContextUuid } from '../../../../../shared/identifiers/non-secure-context-uuid'
 import { wslUsageScope } from '../../../../../shared/wsl-usage-scope'
-import type { RateLimitState } from '../../../../../shared/rate-limit-types'
+import type { RateLimitState } from '../../../../../shared/agent-usage/rate-limits/rate-limit-types'
 import { resolveOwnerUsageRateLimits } from './owner-usage-rate-limits'
 
-export function useWslOwnerUsage(distro: string | null, surfaceKey: string, local: RateLimitState) {
+export function useWslOwnerUsage(
+  distro: string | null,
+  surfaceKey: string,
+  local: RateLimitState,
+  refreshGeneration = 0
+) {
   const settings = useAppStore((state) => (distro ? state.settings : null))
   const scopeKey = useMemo(
     () => (settings && distro ? wslUsageScope(settings, distro).key : null),
     [settings, distro]
   )
   const activation = useMemo(
-    () => ({ distro, scopeKey, surfaceKey }),
+    () => ({ distro, scopeKey, surfaceKey, readId: createNonSecureContextUuid() }),
     [distro, scopeKey, surfaceKey]
   )
   const latest = useRef(activation)
@@ -22,26 +28,31 @@ export function useWslOwnerUsage(distro: string | null, surfaceKey: string, loca
   useEffect(() => {
     latest.current = activation
   }, [activation])
-  const refresh = useCallback(async () => {
-    if (!distro || !scopeKey) {
-      return
-    }
-    const id = ++request.current
-    try {
-      const state = await window.api.rateLimits.readWsl(distro, scopeKey)
-      if (latest.current === activation && request.current === id && state) {
-        setSnapshot({ activation, state })
+  const read = useCallback(
+    async (readId: string) => {
+      if (!distro || !scopeKey || latest.current !== activation) {
+        return
       }
-    } catch {
-      // A failed lane read leaves the existing unavailable presentation, never desktop quota.
-    }
-  }, [distro, scopeKey, activation])
+      const id = ++request.current
+      setSnapshot(null)
+      try {
+        const state = await window.api.rateLimits.readWsl(distro, scopeKey, readId)
+        if (latest.current === activation && request.current === id && state) {
+          setSnapshot({ activation, state })
+        }
+      } catch {
+        // A failed lane read leaves the existing unavailable presentation, never desktop quota.
+      }
+    },
+    [distro, scopeKey, activation]
+  )
   useEffect(() => {
-    void refresh()
+    void read(`${activation.readId}:${refreshGeneration}`)
     return () => {
       request.current += 1
     }
-  }, [refresh])
+  }, [read, activation, refreshGeneration])
+  const refresh = useCallback(() => read(createNonSecureContextUuid()), [read])
   const rateLimits = useMemo(() => {
     const unavailable = resolveOwnerUsageRateLimits(local, {
       kind: 'remote-unverifiable',

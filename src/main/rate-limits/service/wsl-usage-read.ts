@@ -1,33 +1,59 @@
+import { join } from 'node:path'
 import type { ClaudeRuntimeAuthPreparation } from '../../claude-accounts/runtime-auth/runtime-auth-types'
 import { fetchActiveClaudeRateLimits } from '../providers/claude/claude-active-usage-fetch'
 import { fetchCodexRateLimits } from '../providers/codex/codex-fetcher'
 import type { NetworkProxySettings } from '../../../shared/network-proxy'
-import type { RateLimitRuntimeTarget, RateLimitState } from '../../../shared/rate-limit-types'
+import type { ProviderRateLimits } from '../../../shared/agent-usage/rate-limits/rate-limit-types'
 import type { WslUsageScope } from '../../../shared/wsl-usage-scope'
 import { claudeAccountDistroKey } from '../../../shared/claude-account-identity'
 import { wslUncPathToLinux } from '../../../shared/file-access/wsl-paths'
-import { createEmptyRateLimitState } from '../../../shared/rate-limit-state-factory'
+import { wslCredentialGeneration } from './wsl-credential-generation'
 
-type WslReadSources = {
+export type WslReadSources = {
   claude: () => Promise<ClaudeRuntimeAuthPreparation | undefined>
   codex: () => Promise<{ skip: boolean; homePath: string | null }>
   current: () => boolean
   networkProxySettings?: NetworkProxySettings
   claudeEnabled: boolean
 }
+export type WslProviderRead = {
+  limits: ProviderRateLimits | null
+  credential: { path: string; generation: string } | null
+  retry: boolean
+}
+export type WslUsageRead = { claude: WslProviderRead; codex: WslProviderRead }
+export type WslReadProviders = { claude: boolean; codex: boolean }
+const unavailable: WslProviderRead = { limits: null, credential: null, retry: false }
 
-/** Reads an explicit lane without changing the service's published runtime or credentials. */
+async function readCredentialUsage(
+  path: string,
+  fetch: () => Promise<ProviderRateLimits>,
+  signal: AbortSignal
+): Promise<WslProviderRead> {
+  const before = await wslCredentialGeneration(path, signal)
+  if (!before || signal.aborted) {
+    return { ...unavailable, retry: true }
+  }
+  const limits = await fetch().catch(() => null)
+  const after = await wslCredentialGeneration(path, signal)
+  if (!after || before !== after || signal.aborted) {
+    return { ...unavailable, retry: true }
+  }
+  return { limits, credential: limits ? { path, generation: before } : null, retry: false }
+}
+
+/** Reads explicit credential homes without changing the global poller's runtime. */
 export async function readWslUsage(
   distro: string,
   scope: WslUsageScope,
-  sources: WslReadSources
-): Promise<RateLimitState | null> {
-  const target: RateLimitRuntimeTarget = { runtime: 'wsl', wslDistro: distro }
-  const signal = AbortSignal.timeout(30_000)
+  sources: WslReadSources,
+  signal: AbortSignal,
+  providers: WslReadProviders
+): Promise<WslUsageRead> {
   const [claude, codex] = await Promise.all([
     (async () => {
-      if (!scope.claudeAllowed || !sources.claudeEnabled) {
-        return null
+      if (!providers.claude || !scope.claudeAllowed || !sources.claudeEnabled) {
+        return unavailable
       }
       const auth = await sources.claude()
       const expected = scope.claudeId ? `profile:${scope.claudeId}:wsl:` : 'wsl:'
@@ -37,49 +63,78 @@ export async function readWslUsage(
         claudeAccountDistroKey(auth.wslDistro) !== claudeAccountDistroKey(distro) ||
         !auth.provenance.startsWith(expected) ||
         (!scope.claudeId && auth.provenance !== `wsl:${auth.wslDistro}:system`) ||
-        !sources.current()
+        !sources.current() ||
+        signal.aborted
       ) {
-        return null
+        return unavailable
       }
-      const result = await fetchActiveClaudeRateLimits({
-        authPreparation: auth,
-        allowPtyFallback: false,
-        allowUsagePanelSupplement: false,
-        networkProxySettings: sources.networkProxySettings,
+      const reading = await readCredentialUsage(
+        join(auth.configDir, '.credentials.json'),
+        () =>
+          fetchActiveClaudeRateLimits({
+            authPreparation: auth,
+            allowPtyFallback: false,
+            allowUsagePanelSupplement: false,
+            networkProxySettings: sources.networkProxySettings,
+            signal
+          }),
         signal
-      })
+      )
       const after = await sources.claude()
       return sources.current() &&
         after?.provenance === auth.provenance &&
         after.configDir === auth.configDir
-        ? result
-        : null
-    })().catch(() => null),
+        ? reading
+        : unavailable
+    })().catch(() => unavailable),
     (async () => {
-      if (!scope.codexAllowed) {
-        return null
+      if (!providers.codex || !scope.codexAllowed) {
+        return unavailable
       }
       const home = await sources.codex()
       const linuxHome = home.homePath ? wslUncPathToLinux(home.homePath, distro) : null
       const selectedHome = scope.codexHome ? wslUncPathToLinux(scope.codexHome, distro) : null
       if (
         home.skip ||
+        !home.homePath ||
         !linuxHome ||
         (scope.codexHome && selectedHome !== linuxHome) ||
-        !sources.current()
+        !sources.current() ||
+        signal.aborted
       ) {
-        return null
+        return unavailable
       }
-      const result = await fetchCodexRateLimits({
-        codexHomePath: home.homePath,
-        networkProxySettings: sources.networkProxySettings,
+      const reading = await readCredentialUsage(
+        join(home.homePath, 'auth.json'),
+        () =>
+          fetchCodexRateLimits({
+            codexHomePath: home.homePath,
+            networkProxySettings: sources.networkProxySettings,
+            signal
+          }),
         signal
-      })
+      )
       const after = await sources.codex()
-      return sources.current() && !after.skip && after.homePath === home.homePath ? result : null
-    })().catch(() => null)
+      return sources.current() && !after.skip && after.homePath === home.homePath
+        ? reading
+        : unavailable
+    })().catch(() => unavailable)
   ])
-  return sources.current()
-    ? createEmptyRateLimitState({ claudeTarget: target, codexTarget: target, claude, codex })
-    : null
+  return { claude, codex }
+}
+
+export async function unconfirmedWslProviders(
+  reading: WslUsageRead,
+  signal: AbortSignal
+): Promise<WslReadProviders> {
+  const unconfirmed = async (provider: WslProviderRead) =>
+    provider.retry ||
+    (!!provider.credential &&
+      (await wslCredentialGeneration(provider.credential.path, signal)) !==
+        provider.credential.generation)
+  const [claude, codex] = await Promise.all([
+    unconfirmed(reading.claude),
+    unconfirmed(reading.codex)
+  ])
+  return { claude, codex }
 }

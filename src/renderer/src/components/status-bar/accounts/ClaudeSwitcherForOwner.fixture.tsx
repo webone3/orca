@@ -1,11 +1,11 @@
 import { defineFixture } from '../../../component-fixtures/component-fixture'
 import { getDefaultSettings } from '../../../../../shared/constants'
-import { createEmptyRateLimitState } from '../../../../../shared/rate-limit-state-factory'
+import { createEmptyRateLimitState } from '../../../../../shared/agent-usage/rate-limits/rate-limit-state-factory'
 import type {
   ClaudeManagedAccountSummary,
   ClaudeRateLimitAccountsState
-} from '../../../../../shared/managed-account-types'
-import type { ProviderRateLimits } from '../../../../../shared/rate-limit-types'
+} from '../../../../../shared/agent-accounts/managed-account-types'
+import type { ProviderRateLimits } from '../../../../../shared/agent-usage/rate-limits/rate-limit-types'
 import { ClaudeSwitcherForOwner } from './ClaudeSwitcherForOwner'
 
 const claude: ProviderRateLimits = {

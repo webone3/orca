@@ -10,20 +10,30 @@ export function registerRateLimitHandlers(
   codexAccounts: CodexAccountService,
   settings: () => GlobalSettings
 ): void {
-  ipcMain.handle('rateLimits:readWsl', (_event, distro: string, scopeKey: string) => {
-    if (typeof distro !== 'string' || !distro.trim()) {
-      return null
+  ipcMain.handle(
+    'rateLimits:readWsl',
+    (_event, distro: string, scopeKey: string, readId: string) => {
+      if (
+        typeof distro !== 'string' ||
+        !distro.trim() ||
+        typeof readId !== 'string' ||
+        !readId ||
+        readId.length > 128
+      ) {
+        return null
+      }
+      const scope = wslUsageScope(settings(), distro)
+      if (scope.key !== scopeKey) {
+        return null
+      }
+      return rateLimits.readWsl(
+        distro,
+        scope,
+        readId,
+        () => wslUsageScope(settings(), distro).key === scopeKey
+      )
     }
-    const scope = wslUsageScope(settings(), distro)
-    if (scope.key !== scopeKey) {
-      return null
-    }
-    return rateLimits.readWsl(
-      distro,
-      scope,
-      () => wslUsageScope(settings(), distro).key === scopeKey
-    )
-  })
+  )
   ipcMain.handle('rateLimits:get', () => rateLimits.getState())
   ipcMain.handle('rateLimits:refresh', () => rateLimits.refresh())
   ipcMain.handle('rateLimits:refreshCodexForTarget', (_event, target: RateLimitRuntimeTarget) =>

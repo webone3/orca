@@ -1,3 +1,4 @@
+import { resolveClaudeRuntimeSelection } from '../../../../../shared/claude-runtime-selection'
 import {
   claudeAccountIdentityKey,
   claudeAccountDistroKey
@@ -21,7 +22,7 @@ export function getClaudeStatusRuntimeKey(target: CodexStatusRuntimeTarget): str
     : `wsl:${claudeAccountDistroKey(target.wslDistro)}`
 }
 
-function accountIdentities(accounts: ClaudeStatusAccount[], activeId: string | null) {
+function accountIdentities(accounts: ClaudeStatusAccount[], activeId: string | null | undefined) {
   const identities = new Map<
     string,
     {
@@ -81,20 +82,15 @@ export function normalizeClaudeStatusRuntimeTarget(
 export function getClaudeStatusActiveId(
   state: ClaudeRateLimitAccountsState,
   target: CodexStatusRuntimeTarget
-): string | null {
-  const selection = state.activeAccountIdsByRuntime
-  if (target.runtime === 'host') {
-    return selection?.host ?? state.activeAccountId ?? null
-  }
-  const matches = Object.entries(selection?.wsl ?? {}).filter(
-    ([distro]) => claudeAccountDistroKey(distro) === claudeAccountDistroKey(target.wslDistro)
+): string | null | undefined {
+  const result = resolveClaudeRuntimeSelection(
+    {
+      host: state.activeAccountIdsByRuntime?.host ?? state.activeAccountId ?? null,
+      wsl: state.activeAccountIdsByRuntime?.wsl ?? {}
+    },
+    target
   )
-  const distroIds = [...new Set(matches.map(([, id]) => id))]
-  if (target.wslDistro || matches.length) {
-    return distroIds.length === 1 ? distroIds[0] : null
-  }
-  const selectedIds = Array.from(new Set(Object.values(selection?.wsl ?? {}).filter(Boolean)))
-  return selectedIds.length === 1 ? selectedIds[0] : null
+  return result.kind === 'selected' ? result.accountId : undefined
 }
 
 function getClaudeStatusAccountsForTarget(
@@ -208,13 +204,15 @@ export function buildClaudeStatusSwitchGroups(
     return a.localeCompare(b)
   })) {
     const distro =
-      key === '__default__'
-        ? null
-        : (state.accounts.find(
-            (account) =>
-              account.managedAuthRuntime === 'wsl' &&
-              claudeAccountDistroKey(account.wslDistro) === key
-          )?.wslDistro ?? key)
+      currentTarget.wslDistro && claudeAccountDistroKey(currentTarget.wslDistro) === key
+        ? currentTarget.wslDistro
+        : key === '__default__'
+          ? null
+          : (state.accounts.find(
+              (account) =>
+                account.managedAuthRuntime === 'wsl' &&
+                claudeAccountDistroKey(account.wslDistro) === key
+            )?.wslDistro ?? key)
     groups.push(makeGroup({ runtime: 'wsl', wslDistro: distro }))
   }
 

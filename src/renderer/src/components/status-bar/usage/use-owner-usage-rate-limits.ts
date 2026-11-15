@@ -77,7 +77,8 @@ export function useOwnerUsageRateLimits(local: RateLimitState): OwnerUsageRateLi
   const accountOwner = useActiveAccountOwner(LOCAL_TARGET)
   const wslDistro = accountOwner?.wslHostDistro ?? null
   const surfaceKey = useAppStore(visibleAccountSurfaceKey)
-  const wsl = useWslOwnerUsage(wslDistro, surfaceKey, local)
+  const [streamGeneration, setStreamGeneration] = useState(0)
+  const wsl = useWslOwnerUsage(wslDistro, surfaceKey, local, streamGeneration)
   const unavailable = accountOwner === null
   const ownerId = accountOwner ? runtimeTargetEnvironmentId(accountOwner.target) : null
   const ownerActivation = useMemo(
@@ -132,17 +133,18 @@ export function useOwnerUsageRateLimits(local: RateLimitState): OwnerUsageRateLi
   useEffect(() => {
     ownerIdRef.current = ownerActivation
   }, [ownerActivation])
-  // Why: bumping reopens the stream; each open makes the host refresh stale usage.
-  const [streamGeneration, setStreamGeneration] = useState(0)
 
   useEffect(() => {
-    if (!ownerId) {
+    if (!ownerId && !wslDistro) {
       return
     }
     let active = true
     const reopen = (): void => setStreamGeneration((value) => value + 1)
     // Why: older hosts never poll for a paired stream, so a long-lived one would freeze the meters.
     const staleTimer = setTimeout(reopen, REMOTE_USAGE_STALE_REOPEN_MS)
+    if (!ownerId) {
+      return () => clearTimeout(staleTimer)
+    }
     let reconnectTimer: ReturnType<typeof setTimeout> | undefined
     const lost = (): void => {
       if (active) {
@@ -170,7 +172,7 @@ export function useOwnerUsageRateLimits(local: RateLimitState): OwnerUsageRateLi
       clearTimeout(reconnectTimer)
       watcher.close()
     }
-  }, [ownerId, ownerActivation, streamGeneration, applySnapshot, fail])
+  }, [ownerId, wslDistro, ownerActivation, streamGeneration, applySnapshot, fail])
 
   const refreshRemote = useCallback(async () => {
     if (!ownerId) {

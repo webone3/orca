@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CodexRateLimitAccountsState } from '../../../../../shared/agent-accounts/managed-account-types'
-import type { ProviderRateLimits, RateLimitState } from '../../../../../shared/agent-usage/rate-limits/rate-limit-types'
+import type {
+  ProviderRateLimits,
+  RateLimitState
+} from '../../../../../shared/agent-usage/rate-limits/rate-limit-types'
 import { useAppStore } from '../../../store/index'
 import type { AccountOwner } from '@/runtime/provider-accounts/ownership/wsl-host-account-owner'
 import { runtimeTargetEnvironmentId } from '@/runtime/rpc/targets/runtime-client-target'
@@ -73,6 +76,8 @@ export function useCodexSwitcherController(codex: ProviderRateLimits, owner: Acc
     : hasActiveRuntimeEnvironment
       ? ownerRateLimits?.codexTarget
       : localCodexTarget
+  const resetUnavailable =
+    hasActiveRuntimeEnvironment || wslHostDistro !== null || codexTarget?.runtime === 'wsl'
   const providerAccountHostLabel = hasActiveRuntimeEnvironment
     ? (runtimeEnvironments.find((environment) => environment.id === activeRuntimeEnvironmentId)
         ?.name ?? t('auto.components.status.bar.StatusBar.remoteServerLabel', 'Remote server'))
@@ -196,10 +201,7 @@ export function useCodexSwitcherController(codex: ProviderRateLimits, owner: Acc
     if (hasActiveRuntimeEnvironment) {
       return
     }
-    const currentKey = getCodexStatusRuntimeKey(
-      normalizeCodexStatusRuntimeTarget(accountState, toCodexStatusRuntimeTarget(codexTarget))
-    )
-    if (group.key === currentKey) {
+    if (group.key === selectedRuntimeKey) {
       return
     }
     try {
@@ -209,8 +211,13 @@ export function useCodexSwitcherController(codex: ProviderRateLimits, owner: Acc
     }
   }
 
+  const canRedeemCurrentReset = (): boolean =>
+    !resetUnavailable &&
+    mountedRef.current &&
+    useAppStore.getState().rateLimits.codexTarget.runtime === 'host'
+
   const handleRedeemReset = async (): Promise<void> => {
-    if (isRedeemingReset) {
+    if (isRedeemingReset || !canRedeemCurrentReset()) {
       return
     }
     setIsRedeemingReset(true)
@@ -226,6 +233,9 @@ export function useCodexSwitcherController(codex: ProviderRateLimits, owner: Acc
   }
 
   const handleResetMenuSelect = (): void => {
+    if (!canRedeemCurrentReset()) {
+      return
+    }
     if (settings?.skipCodexRateLimitResetConfirm) {
       void handleRedeemReset()
       return
@@ -235,7 +245,7 @@ export function useCodexSwitcherController(codex: ProviderRateLimits, owner: Acc
   }
 
   const handleConfirmReset = async (): Promise<void> => {
-    if (isRedeemingReset) {
+    if (isRedeemingReset || !canRedeemCurrentReset()) {
       return
     }
     if (skipFutureResetConfirm) {
@@ -283,7 +293,7 @@ export function useCodexSwitcherController(codex: ProviderRateLimits, owner: Acc
   const selectedGroup =
     switchGroups.find((group) => group.key === selectedRuntimeKey) ?? switchGroups[0]
   const activeTarget = selectedGroup?.targets.find((target) => target.active)
-  const resetProjection = getCodexResetProjection(codex, hasActiveRuntimeEnvironment, t)
+  const resetProjection = getCodexResetProjection(codex, resetUnavailable, t)
 
   return {
     activeTarget,

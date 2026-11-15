@@ -1,19 +1,20 @@
 import { defineFixture } from '../../../component-fixtures/component-fixture'
 import { getDefaultSettings } from '../../../../../shared/constants'
 import { RUNTIME_PROTOCOL_VERSION } from '../../../../../shared/protocol-version'
-import { createEmptyRateLimitState } from '../../../../../shared/rate-limit-state-factory'
-import type { ProviderRateLimits } from '../../../../../shared/rate-limit-types'
+import { createEmptyRateLimitState } from '../../../../../shared/agent-usage/rate-limits/rate-limit-state-factory'
+import type { ProviderRateLimits } from '../../../../../shared/agent-usage/rate-limits/rate-limit-types'
 import { ClaudeSwitcherForOwner } from './ClaudeSwitcherForOwner'
 import { CodexSwitcherMenu } from './CodexSwitcherMenu'
 
-function fixture(provider: 'claude' | 'codex') {
+function fixture(provider: 'claude' | 'codex', wsl = false) {
   const usage: ProviderRateLimits = {
     provider,
     session: { usedPercent: 17, windowMinutes: 300, resetsAt: null, resetDescription: null },
     weekly: null,
     status: 'ok',
     error: null,
-    updatedAt: Date.now()
+    updatedAt: Date.now(),
+    ...(wsl ? { rateLimitResetCredits: { availableCount: 1, nextExpiresAt: null } } : {})
   }
   const account = {
     email: 'remote@example.com',
@@ -70,7 +71,16 @@ function fixture(provider: 'claude' | 'codex') {
       settings: {
         ...getDefaultSettings('/fixture'),
         machineName: 'MacBook Pro',
-        activeRuntimeEnvironmentId: 'other'
+        activeRuntimeEnvironmentId: 'other',
+        ...(wsl
+          ? {
+              codexManagedAccounts: codex.accounts.map((a) => ({
+                ...a,
+                managedHomePath: `/fixture/${a.id}`
+              })),
+              activeCodexManagedAccountIdsByRuntime: codex.activeAccountIdsByRuntime
+            }
+          : {})
       },
       repos: [
         {
@@ -111,7 +121,17 @@ function fixture(provider: 'claude' | 'codex') {
       runtimeEnvironments: [
         {
           id: 'windows',
-          name: 'Windows PC',
+          name: wsl ? 'WSL Ubuntu' : 'Windows PC',
+          ...(wsl
+            ? {
+                orcadDeployment: {
+                  kind: 'wsl' as const,
+                  distro: 'Ubuntu',
+                  localPort: 1234,
+                  remotePort: 1234
+                }
+              }
+            : {}),
           createdAt: 1,
           updatedAt: 1,
           lastUsedAt: null,
@@ -148,6 +168,10 @@ function fixture(provider: 'claude' | 'codex') {
       })
     },
     setup: () => {
+      if (wsl) {
+        window.api.codexAccounts.list = async () => codex
+        window.api.claudeAccounts.list = async () => ({ accounts: [], activeAccountId: null })
+      }
       window.api.runtimeEnvironments.subscribe = async (_args, handlers) => {
         queueMicrotask(() =>
           handlers.onResponse?.({
@@ -203,3 +227,5 @@ function fixture(provider: 'claude' | 'codex') {
 }
 export const claude = fixture('claude')
 export const codex = fixture('codex')
+
+export const wslReset = fixture('codex', true)
