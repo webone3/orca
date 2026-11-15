@@ -65,11 +65,13 @@ sending the notes to a chat with fewer steps.
 
 - **What:** a button in the browser toolbar, left of Annotate. One press moves the workspace's
   chat tab into a split on the right of the browser; a second press folds it back into the tabs.
-  It uses the existing tab split, so the divider still drags to resize.
+  It uses the existing tab split, so the divider still drags to resize. Right-click the button
+  to put the chat on the left or the right; the choice is remembered.
 - **Why:** the same layout was already possible by dragging a tab to the pane edge, but that is
   hidden and has to be redone by hand.
 - **Files:** `src/renderer/src/components/browser-pane/assemble-chrome/toolbar/`
-  `chat-beside-browser.ts` (new, + test), `browser-chat-beside-button.tsx` (new),
+  `chat-beside-browser.ts` (new, + test), `chat-beside-browser-side.ts` (new),
+  `browser-chat-beside-button.tsx` (new),
   `browser-chrome-toolbar.tsx`
 
 ### Not built (already in Orca)
