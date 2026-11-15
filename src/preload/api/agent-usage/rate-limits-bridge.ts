@@ -7,6 +7,8 @@ import type {
 import type { PreloadApi } from '../../api-types'
 
 export const rateLimitsApi = {
+  readWsl: (distro: string, scopeKey: string): Promise<RateLimitState | null> =>
+    ipcRenderer.invoke('rateLimits:readWsl', distro, scopeKey),
   get: (): Promise<RateLimitState> => ipcRenderer.invoke('rateLimits:get'),
   refresh: (): Promise<RateLimitState> => ipcRenderer.invoke('rateLimits:refresh'),
   refreshCodexForTarget: (target: RateLimitRuntimeTarget): Promise<RateLimitState> =>

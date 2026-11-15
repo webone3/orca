@@ -121,4 +121,33 @@ describe('Claude status switcher identities', () => {
     })
     expect(signedInClaudeAccountCount(state)).toBe(2)
   })
+  it('deduplicates historical WSL casing aliases while retaining selected and usage records', () => {
+    const state: ClaudeRateLimitAccountsState = {
+      accounts: [
+        account('selected', 'eng@example.com', {
+          organizationUuid: ORG,
+          managedAuthRuntime: 'wsl',
+          wslDistro: 'Ubuntu',
+          needsSignIn: true
+        }),
+        account('usable', 'eng@example.com', {
+          organizationUuid: ORG,
+          managedAuthRuntime: 'wsl',
+          wslDistro: 'ubuntu'
+        })
+      ],
+      activeAccountId: null,
+      activeAccountIdsByRuntime: { host: null, wsl: { ubuntu: 'selected' } }
+    }
+    const groups = buildClaudeStatusSwitchGroups(state, { runtime: 'wsl', wslDistro: 'Ubuntu' })
+    expect(groups).toHaveLength(2)
+    expect(groups[1].targets.filter((row) => row.id)).toEqual([
+      expect.objectContaining({
+        id: 'selected',
+        active: true,
+        needsSignIn: true,
+        usageAccountId: 'usable'
+      })
+    ])
+  })
 })

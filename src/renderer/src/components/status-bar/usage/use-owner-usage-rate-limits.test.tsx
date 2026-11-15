@@ -98,6 +98,28 @@ describe('useOwnerUsageRateLimits', () => {
     expect(result.current.rateLimits.claude?.session).toBeNull()
   })
 
+  it('does not retain A across an intervening owner with no snapshot', () => {
+    mocks.owner = { kind: 'environment', environmentId: 'mini' }
+    const { result, rerender } = renderHook(() => useOwnerUsageRateLimits(local))
+    act(() =>
+      mocks.watchers[0].handlers.onSnapshot(
+        snapshot(createEmptyRateLimitState({ claude: provider('claude', 90) }))
+      )
+    )
+    mocks.owner = { kind: 'environment', environmentId: 'devbox' }
+    rerender()
+    mocks.owner = { kind: 'environment', environmentId: 'mini' }
+    rerender()
+    expect(result.current.rateLimits.claude?.session).toBeNull()
+    act(() =>
+      mocks.watchers[2].handlers.onSnapshot(
+        snapshot(createEmptyRateLimitState({ claude: provider('claude', 20) }))
+      )
+    )
+    expect(result.current.rateLimits.claude?.session?.usedPercent).toBe(20)
+    act(() => mocks.watchers[2].handlers.onError(new Error('offline')))
+    expect(result.current.rateLimits.claude?.session).toBeNull()
+  })
   it('ignores a refresh from an earlier activation after returning to the same owner', async () => {
     mocks.owner = { kind: 'environment', environmentId: 'mini' }
     let resolveRefresh: (value: ProviderAccountsSnapshot) => void = () => {}

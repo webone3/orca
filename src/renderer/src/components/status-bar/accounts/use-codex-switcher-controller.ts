@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CodexRateLimitAccountsState } from '../../../../../shared/agent-accounts/managed-account-types'
-import type { ProviderRateLimits } from '../../../../../shared/agent-usage/rate-limits/rate-limit-types'
+import type { ProviderRateLimits, RateLimitState } from '../../../../../shared/agent-usage/rate-limits/rate-limit-types'
 import { useAppStore } from '../../../store/index'
 import type { AccountOwner } from '@/runtime/provider-accounts/ownership/wsl-host-account-owner'
 import { runtimeTargetEnvironmentId } from '@/runtime/rpc/targets/runtime-client-target'
@@ -37,6 +37,7 @@ import { signInCodexAccount } from './codex-sign-in-action'
 
 export function useCodexSwitcherController(codex: ProviderRateLimits, owner: AccountOwner) {
   const t = useTranslate()
+  const [ownerRateLimits, setOwnerRateLimits] = useState<RateLimitState | null>(null)
   const [open, setOpen] = useState(false)
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false)
   const [skipFutureResetConfirm, setSkipFutureResetConfirm] = useState(false)
@@ -57,13 +58,21 @@ export function useCodexSwitcherController(codex: ProviderRateLimits, owner: Acc
   const refreshCodexRateLimitsForTarget = useAppStore((s) => s.refreshCodexRateLimitsForTarget)
   const consumeCodexRateLimitResetCredit = useAppStore((s) => s.consumeCodexRateLimitResetCredit)
   const fetchInactiveCodexAccountUsage = useAppStore((s) => s.fetchInactiveCodexAccountUsage)
-  const inactiveCodexAccounts = useAppStore((s) => s.rateLimits.inactiveCodexAccounts)
-  const codexTarget = useAppStore((s) => s.rateLimits.codexTarget)
+  const localInactiveCodexAccounts = useAppStore((s) => s.rateLimits.inactiveCodexAccounts)
+  const localCodexTarget = useAppStore((s) => s.rateLimits.codexTarget)
   const settings = useAppStore((s) => s.settings)
   const runtimeEnvironments = useAppStore((s) => s.runtimeEnvironments)
   const { target: runtimeTarget, wslHostDistro } = owner
   const activeRuntimeEnvironmentId = runtimeTargetEnvironmentId(runtimeTarget)
   const hasActiveRuntimeEnvironment = activeRuntimeEnvironmentId !== null
+  const inactiveCodexAccounts = hasActiveRuntimeEnvironment
+    ? (ownerRateLimits?.inactiveCodexAccounts ?? [])
+    : localInactiveCodexAccounts
+  const codexTarget = wslHostDistro
+    ? { runtime: 'wsl' as const, wslDistro: wslHostDistro }
+    : hasActiveRuntimeEnvironment
+      ? ownerRateLimits?.codexTarget
+      : localCodexTarget
   const providerAccountHostLabel = hasActiveRuntimeEnvironment
     ? (runtimeEnvironments.find((environment) => environment.id === activeRuntimeEnvironmentId)
         ?.name ?? t('auto.components.status.bar.StatusBar.remoteServerLabel', 'Remote server'))
@@ -91,6 +100,7 @@ export function useCodexSwitcherController(codex: ProviderRateLimits, owner: Acc
     }
     if (mountedRef.current) {
       setAccounts(snapshot.codex)
+      setOwnerRateLimits(snapshot.rateLimits ?? null)
     }
   }, [runtimeTarget])
 
@@ -183,6 +193,9 @@ export function useCodexSwitcherController(codex: ProviderRateLimits, owner: Acc
     })
 
   const handleSelectRuntime = async (group: CodexStatusSwitchGroup): Promise<void> => {
+    if (hasActiveRuntimeEnvironment) {
+      return
+    }
     const currentKey = getCodexStatusRuntimeKey(
       normalizeCodexStatusRuntimeTarget(accountState, toCodexStatusRuntimeTarget(codexTarget))
     )

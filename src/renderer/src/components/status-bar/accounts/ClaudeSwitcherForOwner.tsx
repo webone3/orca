@@ -18,7 +18,6 @@ import {
   useWindowsTerminalCapabilities
 } from '@/runtime/hosts/capabilities/windows-terminal-capabilities'
 import {
-  getCodexStatusRuntimeKey,
   getStatusBarPreferredWslDistro,
   shouldIncludeSettingsWslRuntime,
   toCodexStatusRuntimeTarget,
@@ -27,6 +26,7 @@ import {
 } from './status-bar-runtime-targets'
 import {
   buildClaudeStatusSwitchGroups,
+  getClaudeStatusRuntimeKey,
   signedInClaudeAccountCount,
   getClaudeStatusActiveId,
   normalizeClaudeStatusRuntimeTarget,
@@ -71,8 +71,8 @@ export function ClaudeSwitcherForOwner({
   const activeRuntimeEnvironmentId = runtimeTargetEnvironmentId(runtimeTarget)
   const hasActiveRuntimeEnvironment = activeRuntimeEnvironmentId !== null
   const {
-    inactiveClaudeAccounts,
-    claudeTarget,
+    inactiveClaudeAccounts: localInactiveClaudeAccounts,
+    claudeTarget: localClaudeTarget,
     settings,
     ownHostName,
     accountSettings,
@@ -87,7 +87,7 @@ export function ClaudeSwitcherForOwner({
     getWindowsTerminalCapabilityOwnerKey(activeRuntimeEnvironmentId),
     runtimeTarget
   )
-  const { accounts, setAccounts, accountsLoaded, loadAccounts, mountedRef } =
+  const { accounts, setAccounts, accountsLoaded, loadAccounts, mountedRef, ownerRateLimits } =
     useProviderAccountList(
       'claude',
       runtimeTarget,
@@ -95,6 +95,14 @@ export function ClaudeSwitcherForOwner({
       emptyClaudeAccountsState(),
       !!chatAction
     )
+  const inactiveClaudeAccounts = hasActiveRuntimeEnvironment
+    ? (ownerRateLimits?.inactiveClaudeAccounts ?? [])
+    : localInactiveClaudeAccounts
+  const claudeTarget = wslHostDistro
+    ? { runtime: 'wsl' as const, wslDistro: wslHostDistro }
+    : hasActiveRuntimeEnvironment
+      ? ownerRateLimits?.claudeTarget
+      : localClaudeTarget
   const accountState = resolveClaudeStatusAccountState(
     accountSettings,
     accounts,
@@ -192,7 +200,10 @@ export function ClaudeSwitcherForOwner({
   }
 
   const handleSelectRuntime = async (group: ClaudeStatusSwitchGroup): Promise<void> => {
-    const currentKey = getCodexStatusRuntimeKey(
+    if (hasActiveRuntimeEnvironment) {
+      return
+    }
+    const currentKey = getClaudeStatusRuntimeKey(
       normalizeClaudeStatusRuntimeTarget(accountState, toCodexStatusRuntimeTarget(claudeTarget))
     )
     if (group.key === currentKey) {
@@ -205,7 +216,7 @@ export function ClaudeSwitcherForOwner({
     }
   }
 
-  const selectedRuntimeKey = getCodexStatusRuntimeKey(
+  const selectedRuntimeKey = getClaudeStatusRuntimeKey(
     normalizeClaudeStatusRuntimeTarget(accountState, toCodexStatusRuntimeTarget(claudeTarget))
   )
   // A focused WSL host's accounts are this desktop's for its distro, so that group always shows.
@@ -361,7 +372,7 @@ export function ClaudeSwitcherForOwner({
           : undefined
       }
       topContent={
-        chatAction ? undefined : (
+        chatAction || hasActiveRuntimeEnvironment ? undefined : (
           <AccountRuntimeToggle
             groups={switchGroups}
             value={selectedGroup?.key ?? selectedRuntimeKey}
@@ -382,7 +393,8 @@ export function ClaudeSwitcherForOwner({
             pane: 'accounts',
             repoId: null,
             sectionId: 'accounts-claude',
-            ...(chatAction ? { hostScope: chatAction.target, intent: 'native-accounts' } : {})
+            hostScope: runtimeTarget,
+            ...(chatAction ? { intent: 'native-accounts' as const } : {})
           })
           openSettingsPage()
         }}

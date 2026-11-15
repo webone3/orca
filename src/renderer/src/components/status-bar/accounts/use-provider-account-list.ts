@@ -1,3 +1,4 @@
+import type { RateLimitState } from '../../../../../shared/rate-limit-types'
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import {
   fetchProviderAccountsSnapshot,
@@ -41,7 +42,12 @@ export function useProviderAccountList<Provider extends 'claude' | 'codex'>(
     observing ? observation.getSnapshot : noSnapshot,
     noSnapshot
   )
-  const [local, setLocal] = useState({ ownerKey, accounts: initial, known: false })
+  const [local, setLocal] = useState<{
+    ownerKey: string
+    accounts: ProviderAccountsSnapshot[Provider]
+    known: boolean
+    rateLimits: RateLimitState | null
+  }>({ ownerKey, accounts: initial, known: false, rateLimits: null })
   const accounts = observing
     ? (answer?.accounts ?? initial)
     : local.ownerKey === ownerKey
@@ -61,6 +67,7 @@ export function useProviderAccountList<Provider extends 'claude' | 'codex'>(
         setLocal((previous) => ({
           ownerKey,
           accounts: next,
+          rateLimits: previous.ownerKey === ownerKey ? previous.rateLimits : null,
           known: previous.ownerKey === ownerKey && previous.known
         }))
       }
@@ -77,7 +84,12 @@ export function useProviderAccountList<Provider extends 'claude' | 'codex'>(
       if (observing) {
         observation.setAccounts(snapshot[provider])
       } else {
-        setLocal({ ownerKey, accounts: snapshot[provider], known: true })
+        setLocal({
+          ownerKey,
+          accounts: snapshot[provider],
+          known: true,
+          rateLimits: snapshot.rateLimits ?? null
+        })
       }
     }
   }, [provider, ownerTarget, ownerKey, observing, observation, mountedRef])
@@ -88,5 +100,12 @@ export function useProviderAccountList<Provider extends 'claude' | 'codex'>(
       )
     }
   }, [loadAccounts, observing, provider, syncKey])
-  return { accounts, setAccounts, accountsLoaded, loadAccounts, mountedRef }
+  return {
+    accounts,
+    setAccounts,
+    accountsLoaded,
+    loadAccounts,
+    mountedRef,
+    ownerRateLimits: !observing && local.ownerKey === ownerKey ? local.rateLimits : null
+  }
 }

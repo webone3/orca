@@ -1,3 +1,4 @@
+import { workspaceTabById } from '@/lib/agent-session/tab-identity/structured-chat-tab-index'
 import { getRepoExecutionHostId, type ExecutionHostId } from '../../../../../shared/execution-host'
 import { getRepoMainWorktreeId } from '../../../../../shared/worktree/id'
 import { pendingCreationOpensNativeChat } from '../creation/pending-worktree-creation'
@@ -18,6 +19,21 @@ export type VisibleAccountSurfaceState = WorktreeRuntimeOwnerState &
     groupsByWorktree?: Record<string, readonly Pick<TabGroup, 'id' | 'activeTabId'>[]>
     unifiedTabsByWorktree?: Record<string, readonly Pick<Tab, 'id' | 'executionHostId'>[]>
   }
+
+type SurfaceGroup = Pick<TabGroup, 'id' | 'activeTabId'>
+const groupIndexes = new WeakMap<readonly SurfaceGroup[], ReadonlyMap<string, SurfaceGroup>>()
+
+function focusedGroup(groups: readonly SurfaceGroup[] | undefined, id: string | undefined) {
+  if (!groups || !id) {
+    return undefined
+  }
+  let index = groupIndexes.get(groups)
+  if (!index) {
+    index = new Map(groups.map((group) => [group.id, group]))
+    groupIndexes.set(groups, index)
+  }
+  return index.get(id)
+}
 
 export type AccountSurfaceOwner = {
   hostId: ExecutionHostId | null
@@ -67,13 +83,33 @@ export function visibleAccountHostId(
   }
   if (state.activeView === 'terminal') {
     const groupId = state.activeGroupIdByWorktree?.[workspaceId]
-    const group = state.groupsByWorktree?.[workspaceId]?.find((row) => row.id === groupId)
-    const tab = state.unifiedTabsByWorktree?.[workspaceId]?.find(
-      (row) => row.id === group?.activeTabId
-    )
+    const group = focusedGroup(state.groupsByWorktree?.[workspaceId], groupId)
+    const tab = group?.activeTabId
+      ? workspaceTabById(state.unifiedTabsByWorktree?.[workspaceId], group.activeTabId)
+      : undefined
     if (tab?.executionHostId) {
       return tab.executionHostId
     }
   }
   return getResolvedExecutionHostIdForWorktree(state, workspaceId)
+}
+
+export function visibleAccountSurfaceKey(state: VisibleAccountSurfaceState): string {
+  const creationId = state.activePendingCreationId
+  if (
+    creationId &&
+    selectWorktreeCreationSurfaceShown(state) &&
+    state.pendingWorktreeCreations[creationId] &&
+    pendingCreationOpensNativeChat(state.pendingWorktreeCreations[creationId])
+  ) {
+    return `pending:${creationId}`
+  }
+  const workspaceId = state.activeWorktreeId
+  const group = workspaceId
+    ? focusedGroup(
+        state.groupsByWorktree?.[workspaceId],
+        state.activeGroupIdByWorktree?.[workspaceId]
+      )
+    : undefined
+  return `${workspaceId ?? ''}:${group?.id ?? ''}:${group?.activeTabId ?? ''}`
 }

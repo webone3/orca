@@ -144,6 +144,7 @@ export function createRateLimitsApi(): NonNullable<Partial<PreloadApi>['rateLimi
     await refresh()
   }
   return {
+    readWsl: async () => null,
     get: () => readRateLimits(false),
     refresh,
     refreshCodexForTarget: refresh,

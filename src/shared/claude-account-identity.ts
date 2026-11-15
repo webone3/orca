@@ -5,6 +5,10 @@ export type ClaudeAccountIdentity = {
   wslDistro?: string | null
 }
 
+export function claudeAccountDistroKey(distro: string | null | undefined): string {
+  return distro?.trim().toLowerCase() || '__default__'
+}
+
 export function claudeAccountIdentityKey(account: ClaudeAccountIdentity): string | null {
   const email = account.email?.trim().toLowerCase()
   if (!email) {
@@ -14,6 +18,6 @@ export function claudeAccountIdentityKey(account: ClaudeAccountIdentity): string
     email,
     account.organizationUuid?.trim() || null,
     account.managedAuthRuntime ?? 'host',
-    account.managedAuthRuntime === 'wsl' ? account.wslDistro?.trim() || '__default__' : null
+    account.managedAuthRuntime === 'wsl' ? claudeAccountDistroKey(account.wslDistro) : null
   ])
 }

@@ -211,7 +211,7 @@ function CodexSwitcherForOwner({
       }
       topContent={
         <AccountRuntimeToggle
-          groups={switchGroups}
+          groups={hasActiveRuntimeEnvironment ? [] : switchGroups}
           value={selectedGroup?.key ?? selectedRuntimeKey}
           onChange={(group) => void handleSelectRuntime(group)}
           ariaLabel={t('auto.components.status.bar.StatusBar.38b5647724', 'Codex usage runtime')}
@@ -237,7 +237,8 @@ function CodexSwitcherForOwner({
           openSettingsTarget({
             pane: 'accounts',
             repoId: null,
-            sectionId: 'accounts-codex'
+            sectionId: 'accounts-codex',
+            hostScope: owner.target
           })
           openSettingsPage()
         }}

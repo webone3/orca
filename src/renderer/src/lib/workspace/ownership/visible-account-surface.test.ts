@@ -1,3 +1,6 @@
+import { withHeldTabsAsDrawn } from '@/store/workspace-layout/frames/workspace-layout-frame-held-tabs'
+import type { LayoutFrameSlices } from '@/store/workspace-layout/frames/workspace-layout-frame-slices'
+import type { Tab } from '../../../../../shared/tab-types'
 import { describe, expect, it } from 'vitest'
 import type { ExecutionHostId } from '../../../../../shared/execution-host'
 import { visibleAccountHostId, pendingChatAccountOwner } from './visible-account-surface'
@@ -186,4 +189,92 @@ describe('visibleAccountHostId', () => {
       sourceWorktreeId: 'twin::/remote'
     })
   })
+  it('uses the focused production tab retained as drawn over a newer main frame', () => {
+    const tab: Tab = {
+      id: 'chat',
+      entityId: 'session',
+      contentType: 'agent-session',
+      worktreeId: REMOTE_WORKTREE,
+      groupId: 'right',
+      executionHostId: 'runtime:m4',
+      label: 'Chat',
+      customLabel: null,
+      color: null,
+      sortOrder: 0,
+      createdAt: 1
+    }
+    const drawn: LayoutFrameSlices = {
+      unifiedTabsByWorktree: { [REMOTE_WORKTREE]: [tab] },
+      groupsByWorktree: {
+        [REMOTE_WORKTREE]: [
+          { id: 'right', worktreeId: REMOTE_WORKTREE, tabOrder: ['chat'], activeTabId: 'chat' }
+        ]
+      },
+      activeGroupIdByWorktree: { [REMOTE_WORKTREE]: 'right' },
+      layoutByWorktree: {},
+      tabsByWorktree: {},
+      terminalLayoutsByTabId: {},
+      activeTabIdByWorktree: {},
+      openFiles: [],
+      editorDrafts: {},
+      markdownFrontmatterVisible: {},
+      activeFileIdByWorktree: {},
+      browserTabsByWorktree: {},
+      browserPagesByWorkspace: {},
+      remoteBrowserPageHandlesByPageId: {},
+      activeBrowserTabIdByWorktree: {},
+      activeTabTypeByWorktree: {}
+    }
+    const built: LayoutFrameSlices = {
+      ...drawn,
+      unifiedTabsByWorktree: { [REMOTE_WORKTREE]: [{ ...tab, executionHostId: 'local' }] }
+    }
+    const held = withHeldTabsAsDrawn(drawn, built, [REMOTE_WORKTREE], {
+      isTabHeld: (_workspace, id) => id === 'chat',
+      isGroupLayoutHeld: () => true
+    })
+    expect(visibleAccountHostId(state({ ...held }))).toBe('runtime:m4')
+    expect(visibleAccountHostId(state({ ...built }))).toBe('local')
+  })
+
+  it('updates indexed focused ownership in a large immutable tab catalog', () => {
+    const tabs = Array.from({ length: 20_000 }, (_, i) => ({
+      id: `t${i}`,
+      executionHostId: 'runtime:m4' as const
+    }))
+    const groups = Array.from({ length: 1_000 }, (_, i) => ({
+      id: `g${i}`,
+      activeTabId: `t${i * 20 + 19}`
+    }))
+    const shown = state({
+      activeGroupIdByWorktree: { [REMOTE_WORKTREE]: 'g999' },
+      groupsByWorktree: { [REMOTE_WORKTREE]: groups },
+      unifiedTabsByWorktree: { [REMOTE_WORKTREE]: tabs }
+    })
+    expect(visibleAccountHostId(shown)).toBe('runtime:m4')
+    expect(
+      visibleAccountHostId({
+        ...shown,
+        unifiedTabsByWorktree: {
+          [REMOTE_WORKTREE]: [...tabs.slice(0, -1), { id: 't19999', executionHostId: 'local' }]
+        }
+      })
+    ).toBe('local')
+    expect(visibleAccountHostId(shown)).toBe('runtime:m4')
+  })
+
+  it.each([REMOTE_WORKTREE, LOCAL_WORKTREE])(
+    'preserves legacy ownership for unstamped tabs in %s',
+    (workspace) => {
+      const shown = state({
+        activeWorktreeId: workspace,
+        activeGroupIdByWorktree: { [workspace]: 'g' },
+        groupsByWorktree: { [workspace]: [{ id: 'g', activeTabId: 'old' }] },
+        unifiedTabsByWorktree: { [workspace]: [{ id: 'old' }] }
+      })
+      expect(visibleAccountHostId(shown)).toBe(
+        workspace === REMOTE_WORKTREE ? 'runtime:m4' : 'local'
+      )
+    }
+  )
 })
