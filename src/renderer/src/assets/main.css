@@ -1218,14 +1218,18 @@ html.native-shell .app-layout {
   border-radius: 1px;
   /* Set only when Settings changed the divider color from its default. */
   background: var(--split-divider-setting, var(--split-divider));
-  transition: background 100ms ease;
+  transition:
+    background 100ms ease,
+    width 100ms ease,
+    height 100ms ease;
 }
 
 .tab-group-split-resize-handle.is-vertical::after {
   top: 0;
   bottom: 0;
   left: 50%;
-  width: 3px;
+  /* A hairline at rest, like the app's other borders; it thickens while hovered or dragged. */
+  width: 1px;
   transform: translateX(-50%);
 }
 
@@ -1233,13 +1237,23 @@ html.native-shell .app-layout {
   left: 0;
   right: 0;
   top: 50%;
-  height: 3px;
+  height: 1px;
   transform: translateY(-50%);
 }
 
 .tab-group-split-resize-handle:hover::after,
 .tab-group-split-resize-handle.is-dragging::after {
   background: var(--split-divider-hover);
+}
+
+.tab-group-split-resize-handle.is-vertical:hover::after,
+.tab-group-split-resize-handle.is-vertical.is-dragging::after {
+  width: 3px;
+}
+
+.tab-group-split-resize-handle.is-horizontal:hover::after,
+.tab-group-split-resize-handle.is-horizontal.is-dragging::after {
+  height: 3px;
 }
 
 /* Electron drag hit-testing ignores z-index; every overlapping Radix portal needs explicit no-drag. */
