@@ -61,10 +61,20 @@ sending the notes to a chat with fewer steps.
     (+ test), `browser-annotation-batch-mode.ts` (new), `pending-browser-annotation-card.tsx`
   - `src/renderer/src/components/browser-pane/assemble-chrome/feedback/browser-page-chrome-banners.tsx`
 
+### 3. Chat beside the page (`feat/chat-beside-browser`)
+
+- **What:** a button in the browser toolbar, left of Annotate. One press moves the workspace's
+  chat tab into a split on the right of the browser; a second press folds it back into the tabs.
+  It uses the existing tab split, so the divider still drags to resize.
+- **Why:** the same layout was already possible by dragging a tab to the pane edge, but that is
+  hidden and has to be redone by hand.
+- **Files:** `src/renderer/src/components/browser-pane/assemble-chrome/toolbar/`
+  `chat-beside-browser.ts` (new, + test), `browser-chat-beside-button.tsx` (new),
+  `browser-chrome-toolbar.tsx`
+
 ### Not built (already in Orca)
 
-- **Chat beside the browser:** drag the chat tab onto the right edge of the browser pane. The
-  divider between them drags to resize. Cmd/Ctrl+B hides the project sidebar.
+- **Hiding the project sidebar:** Cmd/Ctrl+B.
 
 ## Build and run
 
