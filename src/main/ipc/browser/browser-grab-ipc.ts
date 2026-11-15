@@ -127,7 +127,10 @@ export function registerBrowserGrabHandlers(): void {
         return { opId: args.opId, kind: 'error', reason: 'Guest not ready' }
       }
       // awaitGrabSelection cancels previous grabs; an extra active-op guard would race rearming.
-      return browserManager.awaitGrabSelection(args.browserPageId, args.opId, guest)
+      return browserManager.awaitGrabSelection(args.browserPageId, args.opId, guest, {
+        holdAfterPick: args.holdAfterPick === true,
+        heldSelection: args.heldSelection === true
+      })
     }
   )
 

@@ -60,15 +60,15 @@ export const GRAB_GUEST_OVERLAY_SCRIPT = `  var host = document.createElement('d
     hoverLabel.style.display = 'block';
   }
 
-  function onPointerMove(e) {
+  function elementAtPoint(x, y) {
     // Exclude the overlay from hit testing to find the page element underneath.
     host.style.pointerEvents = 'none';
-    var el = document.elementFromPoint(e.clientX, e.clientY);
+    var el = document.elementFromPoint(x, y);
     // Document hit-testing stops at a shadow host; closed roots stay opaque.
     // Page code can shadow shadowRoot (e.g. a form control named "shadowRoot"); keep the deepest real hit.
     try {
       while (el && el.shadowRoot) {
-        var inner = el.shadowRoot.elementFromPoint(e.clientX, e.clientY);
+        var inner = el.shadowRoot.elementFromPoint(x, y);
         if (!inner || inner === el) break;
         el = inner;
       }
@@ -76,6 +76,11 @@ export const GRAB_GUEST_OVERLAY_SCRIPT = `  var host = document.createElement('d
     } finally {
       host.style.pointerEvents = 'all';
     }
+    return el;
+  }
+
+  function onPointerMove(e) {
+    var el = elementAtPoint(e.clientX, e.clientY);
     if (el) {
       requestAnimationFrame(function() { updateHighlight(el); });
     }
@@ -95,7 +100,15 @@ export const GRAB_GUEST_OVERLAY_SCRIPT = `  var host = document.createElement('d
     if (!e.isTrusted || (e.type === 'click' && e.detail === 0) || (e.type === 'contextmenu' && e.button === -1)) return;
     e.preventDefault();
     e.stopImmediatePropagation();
-    if ((e.type === 'click' || e.type === 'contextmenu') && grab.onPick) grab.onPick(e);
+    if ((e.type !== 'click' && e.type !== 'contextmenu') || !grab.onPick) return;
+    if (selectedEl) {
+      // A held selection has no hover tracking, so the pick is whatever this press landed on.
+      var el = elementAtPoint(e.clientX, e.clientY);
+      if (!el || el === document.documentElement || el === document.body) return;
+      stopTrackingSelection();
+      updateHighlight(el);
+    }
+    grab.onPick(e);
   }
 
   function stopPointerInput() {
@@ -157,11 +170,16 @@ export const GRAB_GUEST_OVERLAY_SCRIPT = `  var host = document.createElement('d
     host: host,
     extractPayload: extractPayload,
     getCurrentElement: function() { return currentEl; },
-    // Release pointer events while preserving the selection outline for the copy menu.
-    freezeHighlight: function(selectionId) {
-      stopPointerInput();
-      host.style.pointerEvents = 'none';
-      host.style.cursor = 'default';
+    // Preserve the selection outline for the copy menu. Pointer events are released unless
+    // the caller holds them so the next press picks another element instead of reaching the page.
+    freezeHighlight: function(selectionId, holdPresses) {
+      if (holdPresses) {
+        window.removeEventListener('mousemove', onPointerMove, true);
+      } else {
+        stopPointerInput();
+        host.style.pointerEvents = 'none';
+        host.style.cursor = 'default';
+      }
       // Capture scrolls so selection tracking includes nested scroll containers.
       selectedEl = currentEl;
       if (!selectedEl) return;

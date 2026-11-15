@@ -26,6 +26,8 @@ export type GrabModeHook = {
   rearm: () => void
   /** Called after Attach to AI — exits grab mode entirely. */
   exit: () => void
+  /** While on, a click on the page during 'confirming' picks that element as the next payload. */
+  setKeepPicking: (keepPicking: boolean) => void
 }
 
 let opIdCounter = 0
@@ -67,7 +69,11 @@ export function useGrabMode(browserPageId: string): GrabModeHook {
   const grabTabIdRef = useRef<string | null>(null)
   const armGenerationRef = useRef(0)
   const browserTabIdRef = useRef(browserPageId)
+  const keepPickingRef = useRef(false)
   const mountedRef = useMountedRef()
+  const setKeepPicking = useCallback((keepPicking: boolean) => {
+    keepPickingRef.current = keepPicking
+  }, [])
 
   useLayoutEffect(() => {
     browserTabIdRef.current = browserPageId
@@ -86,6 +92,82 @@ export function useGrabMode(browserPageId: string): GrabModeHook {
       }
     }
   }, [browserPageId])
+
+  const awaitPickRef = useRef<
+    (tabId: string, armGeneration: number, heldSelection: boolean) => Promise<void>
+  >(async () => {})
+  const awaitPick = useCallback(
+    async (tabId: string, armGeneration: number, heldSelection: boolean): Promise<void> => {
+      const keepPicking = keepPickingRef.current
+      const opId = nextOpId()
+      activeOpIdRef.current = opId
+
+      if (!heldSelection) {
+        setState('awaiting')
+      }
+      const result = await window.api.browser
+        .awaitGrabSelection({
+          browserPageId: tabId,
+          opId,
+          ...(keepPicking ? { holdAfterPick: true } : {}),
+          ...(heldSelection ? { heldSelection: true } : {})
+        })
+        .catch((): BrowserGrabResult => ({ opId, kind: 'error', reason: 'Selection failed' }))
+
+      if (!mountedRef.current || activeOpIdRef.current !== opId || grabTabIdRef.current !== tabId) {
+        return
+      }
+
+      activeOpIdRef.current = null
+
+      if (result.kind === 'selected' || result.kind === 'context-selected') {
+        let screenshot: BrowserGrabScreenshot | null = null
+        try {
+          const ssResult = await window.api.browser.captureSelectionScreenshot({
+            browserPageId: tabId,
+            rect: result.payload.target.rectViewport
+          })
+          if (ssResult.ok) {
+            screenshot = ssResult.screenshot as BrowserGrabScreenshot
+          }
+        } catch {
+          // Screenshot failure is non-fatal
+        }
+        if (
+          !mountedRef.current ||
+          armGenerationRef.current !== armGeneration ||
+          grabTabIdRef.current !== tabId
+        ) {
+          return
+        }
+
+        setContextMenu(result.kind === 'context-selected')
+        setPayload({ ...result.payload, screenshot })
+        setState('confirming')
+        if (keepPicking) {
+          // The page still holds its clicks: wait for one on the next element.
+          void awaitPickRef.current(tabId, armGeneration, true)
+        }
+      } else if (heldSelection) {
+        // The held selection and its note stay as they are; only a timed-out wait is renewed.
+        if (result.kind === 'cancelled' && result.reason === 'timeout') {
+          void awaitPickRef.current(tabId, armGeneration, true)
+        }
+      } else if (result.kind === 'cancelled') {
+        grabTabIdRef.current = null
+        setState('idle')
+        setPayload(null)
+      } else {
+        grabTabIdRef.current = null
+        setState('error')
+        setError(result.reason)
+      }
+    },
+    [mountedRef]
+  )
+  useLayoutEffect(() => {
+    awaitPickRef.current = awaitPick
+  }, [awaitPick])
 
   const armAndAwait = useCallback(async () => {
     const tabId = browserPageId
@@ -121,54 +203,8 @@ export function useGrabMode(browserPageId: string): GrabModeHook {
       return
     }
 
-    const opId = nextOpId()
-    activeOpIdRef.current = opId
-
-    setState('awaiting')
-    const result = await window.api.browser
-      .awaitGrabSelection({ browserPageId: tabId, opId })
-      .catch((): BrowserGrabResult => ({ opId, kind: 'error', reason: 'Selection failed' }))
-
-    if (!mountedRef.current || activeOpIdRef.current !== opId || grabTabIdRef.current !== tabId) {
-      return
-    }
-
-    activeOpIdRef.current = null
-
-    if (result.kind === 'selected' || result.kind === 'context-selected') {
-      let screenshot: BrowserGrabScreenshot | null = null
-      try {
-        const ssResult = await window.api.browser.captureSelectionScreenshot({
-          browserPageId: tabId,
-          rect: result.payload.target.rectViewport
-        })
-        if (ssResult.ok) {
-          screenshot = ssResult.screenshot as BrowserGrabScreenshot
-        }
-      } catch {
-        // Screenshot failure is non-fatal
-      }
-      if (
-        !mountedRef.current ||
-        armGenerationRef.current !== armGeneration ||
-        grabTabIdRef.current !== tabId
-      ) {
-        return
-      }
-
-      setContextMenu(result.kind === 'context-selected')
-      setPayload({ ...result.payload, screenshot })
-      setState('confirming')
-    } else if (result.kind === 'cancelled') {
-      grabTabIdRef.current = null
-      setState('idle')
-      setPayload(null)
-    } else {
-      grabTabIdRef.current = null
-      setState('error')
-      setError(result.reason)
-    }
-  }, [browserPageId, mountedRef])
+    await awaitPick(tabId, armGeneration, false)
+  }, [awaitPick, browserPageId, mountedRef])
 
   const cancel = useCallback(() => {
     const targetTabId = grabTabIdRef.current
@@ -257,5 +293,5 @@ export function useGrabMode(browserPageId: string): GrabModeHook {
   // Includes the copy toast's wait before rearming, while the page still has focus.
   useGuestEscape(browserPageId, state !== 'idle', cancel)
 
-  return { state, payload, error, contextMenu, toggle, cancel, rearm, exit }
+  return { state, payload, error, contextMenu, toggle, cancel, rearm, exit, setKeepPicking }
 }

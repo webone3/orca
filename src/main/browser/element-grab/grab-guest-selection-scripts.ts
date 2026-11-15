@@ -1,4 +1,4 @@
-export const AWAIT_CLICK_SCRIPT = `(async function() {
+const buildAwaitClickScript = (holdAfterPick: boolean): string => `(async function() {
   // Async returns an intrinsic Promise Electron unwraps even when Zone.js replaces global Promise.
   return await new Promise(function(resolve, reject) {
     'use strict';
@@ -30,7 +30,7 @@ export const AWAIT_CLICK_SCRIPT = `(async function() {
       var payload = extractSelectedPayload(el);
       if (!payload) return;
       // Keep the selected element outlined while the renderer shows its copy menu.
-      grab.freezeHighlight(payload.page.capturedAt);
+      grab.freezeHighlight(payload.page.capturedAt, ${holdAfterPick});
       // The marker opens the action menu instead of auto-copying.
       resolve(e.type === 'contextmenu' ? { __orcaContextMenu: true, payload: payload } : payload);
     };
@@ -42,6 +42,10 @@ export const AWAIT_CLICK_SCRIPT = `(async function() {
     };
   });
 })()`
+
+export const AWAIT_CLICK_SCRIPT = buildAwaitClickScript(false)
+/** Picks like AWAIT_CLICK_SCRIPT, then keeps holding the page's clicks for the next pick. */
+export const AWAIT_CLICK_AND_HOLD_SCRIPT = buildAwaitClickScript(true)
 
 export const FINALIZE_SCRIPT = `(function() {
   'use strict';

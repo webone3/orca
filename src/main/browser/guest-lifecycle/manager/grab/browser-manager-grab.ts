@@ -9,6 +9,7 @@ import {
 import type {
   BrowserGrabCancelReason,
   BrowserGrabResult,
+  BrowserGrabSelectionHold,
   BrowserGrabRect,
   BrowserGrabPayload,
   BrowserGrabScreenshot
@@ -82,9 +83,10 @@ export abstract class BrowserManagerGrab extends BrowserManagerViewport {
   awaitGrabSelection(
     browserTabId: string,
     opId: string,
-    guest: Electron.WebContents
+    guest: Electron.WebContents,
+    hold: BrowserGrabSelectionHold = {}
   ): Promise<BrowserGrabResult> {
-    return this.grabSessionController.awaitGrabSelection(browserTabId, opId, guest)
+    return this.grabSessionController.awaitGrabSelection(browserTabId, opId, guest, hold)
   }
 
   cancelGrabOp(browserTabId: string, reason: BrowserGrabCancelReason): void {

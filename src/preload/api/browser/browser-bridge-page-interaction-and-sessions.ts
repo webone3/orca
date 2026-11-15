@@ -131,8 +131,12 @@ export const browserPageInteractionAndSessionsApi = {
     ipcRenderer.invoke('browser:cancelDownload', args),
   setGrabMode: (args: { browserPageId: string; enabled: boolean }) =>
     ipcRenderer.invoke('browser:setGrabMode', args),
-  awaitGrabSelection: (args: { browserPageId: string; opId: string }) =>
-    ipcRenderer.invoke('browser:awaitGrabSelection', args),
+  awaitGrabSelection: (args: {
+    browserPageId: string
+    opId: string
+    holdAfterPick?: boolean
+    heldSelection?: boolean
+  }) => ipcRenderer.invoke('browser:awaitGrabSelection', args),
   cancelGrab: (args: { browserPageId: string }): Promise<boolean> =>
     ipcRenderer.invoke('browser:cancelGrab', args),
   captureSelectionScreenshot: (args: {

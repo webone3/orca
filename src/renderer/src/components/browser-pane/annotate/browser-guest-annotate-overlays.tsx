@@ -53,6 +53,7 @@ export function BrowserGuestAnnotateOverlays({
   const {
     pendingAnnotationPayload,
     handleAddBrowserAnnotation,
+    handlePendingBrowserAnnotationDraftChange,
     handleCancelPendingBrowserAnnotation,
     grabIntent,
     grabMenuActionTakenRef,
@@ -98,6 +99,8 @@ export function BrowserGuestAnnotateOverlays({
         : null}
       {pendingAnnotationPayload ? (
         <PendingBrowserAnnotationCard
+          // Why: picking another element moves the card there with an empty note.
+          key={pendingAnnotationPayload.page.capturedAt}
           payload={pendingAnnotationPayload}
           worktreeId={worktreeId}
           resolveAnchor={(cardHeight) =>
@@ -111,6 +114,7 @@ export function BrowserGuestAnnotateOverlays({
           }
           portalContainer={containerRef.current}
           onAdd={handleAddBrowserAnnotation}
+          onDraftChange={handlePendingBrowserAnnotationDraftChange}
           onCancel={handleCancelPendingBrowserAnnotation}
         />
       ) : null}

@@ -72,6 +72,12 @@ export type BrowserPageGrabAnnotationsOptions = {
   browserAnnotationsLength: number
 }
 
+export type BrowserAnnotationDraft = {
+  comment: string
+  intent: BrowserAnnotationIntent
+  imagePaths: string[]
+}
+
 export type BrowserPageGrabAnnotations = {
   grabIntent: GrabIntent
   startGrabIntent: (nextIntent: GrabIntent) => void
@@ -91,6 +97,8 @@ export type BrowserPageGrabAnnotations = {
     intent: BrowserAnnotationIntent,
     imagePaths?: string[]
   ) => void
+  /** Reports the open card's note; null while it has nothing worth saving. */
+  handlePendingBrowserAnnotationDraftChange: (draft: BrowserAnnotationDraft | null) => void
   handleCancelPendingBrowserAnnotation: () => void
   cancelPendingBrowserCapture: () => void
   handleGrabActionShortcut: (key: 'c' | 's') => void

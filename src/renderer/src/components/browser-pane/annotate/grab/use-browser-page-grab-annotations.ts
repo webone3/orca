@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { translate } from '@/i18n/i18n'
 import { useMountedRef } from '@/hooks/useMountedRef'
 import { useAppStore } from '@/store/index'
 import { imageCopyFailedMessage } from '@/lib/clipboard/images/clipboard-image-copy'
@@ -11,35 +10,20 @@ import {
 } from '../../../../../../shared/browser/element-grab/browser-grab-types'
 import { formatGrabPayloadAsText } from './GrabConfirmationSheet'
 import { browserAnnotationLimitMessage } from '../delivery/browser-annotation-limit-message'
-import {
-  createBrowserAnnotationId,
-  createBrowserAnnotationPayload,
-  DEFAULT_BROWSER_ANNOTATION_PRIORITY
-} from '../../describe-page/browser-annotation-geometry'
 import { useBrowserPageAnnotationViewportTracking } from '../viewport/use-browser-page-annotation-viewport-tracking'
 import { runBrowserGrabActionShortcut } from './browser-page-grab-action'
 import { useGrabScreenshotCopy } from '../capture/use-grab-screenshot-copy'
+import {
+  annotationAddedGrabToastMessage,
+  copiedGrabToastMessage,
+  screenshottedGrabToastMessage
+} from './browser-grab-toast-messages'
+import { usePendingBrowserAnnotationDraft } from './use-pending-browser-annotation-draft'
 import type {
   BrowserPageGrabAnnotations,
   BrowserPageGrabAnnotationsOptions,
   BrowserPageGrabToastState
 } from '../../describe-page/browser-page-types'
-
-const copiedGrabToastMessage = (): string =>
-  translate(
-    'auto.components.browser.pane.annotate.use.browser.page.grab.annotations.0c7b9b2b7a',
-    'Copied'
-  )
-const screenshottedGrabToastMessage = (): string =>
-  translate(
-    'auto.components.browser.pane.annotate.use.browser.page.grab.annotations.c937229f19',
-    'Screenshotted'
-  )
-const annotationAddedGrabToastMessage = (): string =>
-  translate(
-    'auto.components.browser.pane.annotate.use.browser.page.grab.annotations.1f5cb19034',
-    'Annotation added'
-  )
 
 export function useBrowserPageGrabAnnotations({
   browserTabId,
@@ -78,9 +62,15 @@ export function useBrowserPageGrabAnnotations({
   // Why: Radix fires onOpenChange(false) before onSelect, so this flag lets onOpenChange skip the rearm that would clear the payload first.
   const grabMenuActionTakenRef = useRef(false)
   const recordFeatureInteraction = useAppStore((s) => s.recordFeatureInteraction)
-  const addBrowserPageAnnotation = useAppStore((s) => s.addBrowserPageAnnotation)
 
   useEffect(() => () => clearTimeout(grabToastTimerRef.current), [])
+
+  const {
+    addAnnotationForPayload,
+    savePendingDraftFor,
+    clearPendingDraft,
+    handlePendingBrowserAnnotationDraftChange
+  } = usePendingBrowserAnnotationDraft(browserTabId)
   const { claimGrabToast, copyGrabScreenshot } = useGrabScreenshotCopy()
 
   const dismissGrabToast = useCallback(() => {
@@ -143,11 +133,21 @@ export function useBrowserPageGrabAnnotations({
       return
     }
     if (grabIntent === 'annotate') {
+      // Picking the next element while a note is open saves that note first.
+      const previousPayload = pendingAnnotationPayloadRef.current
+      const savedPreviousNote =
+        previousPayload && previousPayload !== grab.payload && savePendingDraftFor(previousPayload)
+          ? 1
+          : 0
       // The store refuses notes past the cap, so say so before the user writes one.
       if (
         grabPayloadRef.current === grab.payload &&
-        isBrowserAnnotationPageFull(browserAnnotationsLengthRef.current)
+        isBrowserAnnotationPageFull(browserAnnotationsLengthRef.current + savedPreviousNote)
       ) {
+        if (savedPreviousNote) {
+          pendingAnnotationPayloadRef.current = null
+          setPendingAnnotationPayload(null)
+        }
         showGrabToast(browserAnnotationLimitMessage(), 'error', grab.payload)
         return
       }
@@ -172,6 +172,7 @@ export function useBrowserPageGrabAnnotations({
     grab.payload,
     grab.contextMenu,
     grabIntent,
+    savePendingDraftFor,
     recordFeatureInteraction,
     setBrowserOverlayViewport,
     showGrabToast
@@ -196,6 +197,8 @@ export function useBrowserPageGrabAnnotations({
         recordFeatureInteraction('browser-annotations')
       }
       setGrabIntent(nextIntent)
+      // Annotating keeps picking: a click on the next element moves the note card there.
+      grab.setKeepPicking(nextIntent === 'annotate')
       if (nextIntent === 'copy') {
         setPendingAnnotationPayload(null)
       }
@@ -265,42 +268,34 @@ export function useBrowserPageGrabAnnotations({
       if (!payload) {
         return
       }
-      addBrowserPageAnnotation({
-        id: createBrowserAnnotationId(),
-        browserPageId: browserTabId,
-        comment,
-        intent,
-        priority: DEFAULT_BROWSER_ANNOTATION_PRIORITY,
-        createdAt: new Date().toISOString(),
-        payload: createBrowserAnnotationPayload(payload),
-        ...(imagePaths.length > 0 ? { imagePaths } : {})
-      })
-      recordFeatureInteraction('browser-annotations')
+      addAnnotationForPayload(payload, { comment, intent, imagePaths })
       pendingAnnotationPayloadRef.current = null
       setPendingAnnotationPayload(null)
       showGrabToast(annotationAddedGrabToastMessage(), 'success', payload)
       grab.rearm()
     },
-    [addBrowserPageAnnotation, browserTabId, grab, recordFeatureInteraction, showGrabToast]
+    [addAnnotationForPayload, grab, showGrabToast]
   )
 
   const handleCancelPendingBrowserAnnotation = useCallback((): void => {
+    clearPendingDraft()
     pendingAnnotationPayloadRef.current = null
     setPendingAnnotationPayload(null)
     if (grabIntent === 'annotate' && grab.state === 'confirming') {
       grab.rearm()
     }
-  }, [grab, grabIntent])
+  }, [clearPendingDraft, grab, grabIntent])
 
   const cancelPendingBrowserCapture = useCallback((): void => {
     claimGrabToast()
     grabRef.current.cancel()
+    clearPendingDraft()
     pendingAnnotationPayloadRef.current = null
     grabPayloadRef.current = null
     setPendingAnnotationPayload(null)
     clearTimeout(grabToastTimerRef.current)
     setGrabToast(null)
-  }, [claimGrabToast])
+  }, [claimGrabToast, clearPendingDraft])
 
   return {
     grabIntent,
@@ -316,6 +311,7 @@ export function useBrowserPageGrabAnnotations({
     handleGrabCopyScreenshot,
     grabMenuActionTakenRef,
     handleAddBrowserAnnotation,
+    handlePendingBrowserAnnotationDraftChange,
     handleCancelPendingBrowserAnnotation,
     cancelPendingBrowserCapture,
     handleGrabActionShortcut

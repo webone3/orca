@@ -1,6 +1,7 @@
 import type {
   BrowserGrabCancelReason,
-  BrowserGrabResult
+  BrowserGrabResult,
+  BrowserGrabSelectionHold
 } from '../../../shared/browser/element-grab/browser-grab-types'
 import { buildGuestOverlayScript } from './grab-guest-script'
 import { clampGrabPayload } from './browser-grab-payload'
@@ -75,7 +76,8 @@ export class BrowserGrabSessionController {
   awaitGrabSelection(
     browserTabId: string,
     opId: string,
-    guest: Electron.WebContents
+    guest: Electron.WebContents,
+    hold: BrowserGrabSelectionHold = {}
   ): Promise<BrowserGrabResult> {
     const existing = this.activeGrabOps.get(browserTabId)
     if (existing) {
@@ -95,7 +97,14 @@ export class BrowserGrabSessionController {
         settled = true
         clearTimeout(timeoutId)
         // Keep the selection highlight until the renderer dismisses or rearms the picker.
-        op.cleanup(result.kind === 'selected' || result.kind === 'context-selected')
+        // A held selection also outlives this wait timing out: its note may still be open.
+        op.cleanup(
+          result.kind === 'selected' ||
+            result.kind === 'context-selected' ||
+            (hold.heldSelection === true &&
+              result.kind === 'cancelled' &&
+              result.reason === 'timeout')
+        )
         this.activeGrabOps.delete(browserTabId)
         this.onSettled?.(browserTabId, guest)
         resolve(result)
@@ -103,7 +112,9 @@ export class BrowserGrabSessionController {
 
       const awaitGuestClick = async (): Promise<void> => {
         try {
-          const rawPayload = await guest.executeJavaScript(buildGuestOverlayScript('awaitClick'))
+          const rawPayload = await guest.executeJavaScript(
+            buildGuestOverlayScript(hold.holdAfterPick ? 'awaitClickAndHold' : 'awaitClick')
+          )
           if (!rawPayload || typeof rawPayload !== 'object') {
             settleOnce({ opId, kind: 'cancelled', reason: 'user' })
             return

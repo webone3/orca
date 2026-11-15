@@ -5,13 +5,20 @@ import { GRAB_GUEST_FOUNDATION_SCRIPT } from './grab-guest-foundation-script'
 import { GRAB_GUEST_OVERLAY_SCRIPT } from './grab-guest-overlay-script'
 import { GRAB_GUEST_REACT_SCRIPT } from './grab-guest-react-script'
 import {
+  AWAIT_CLICK_AND_HOLD_SCRIPT,
   AWAIT_CLICK_SCRIPT,
   EXTRACT_HOVER_SCRIPT,
   FINALIZE_SCRIPT,
   TEARDOWN_SCRIPT
 } from './grab-guest-selection-scripts'
 
-type GuestScriptAction = 'arm' | 'awaitClick' | 'finalize' | 'extractHover' | 'teardown'
+type GuestScriptAction =
+  | 'arm'
+  | 'awaitClick'
+  | 'awaitClickAndHold'
+  | 'finalize'
+  | 'extractHover'
+  | 'teardown'
 
 /** Runs in the guest through webContents.executeJavaScript. */
 export function buildGuestOverlayScript(action: GuestScriptAction): string {
@@ -20,6 +27,8 @@ export function buildGuestOverlayScript(action: GuestScriptAction): string {
       return ARM_SCRIPT
     case 'awaitClick':
       return AWAIT_CLICK_SCRIPT
+    case 'awaitClickAndHold':
+      return AWAIT_CLICK_AND_HOLD_SCRIPT
     case 'finalize':
       return FINALIZE_SCRIPT
     case 'extractHover':

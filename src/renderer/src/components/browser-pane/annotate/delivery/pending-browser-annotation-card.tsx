@@ -5,10 +5,7 @@ import { Button } from '@/components/ui/button'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { Label } from '@/components/ui/label'
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
-import {
-  getScreenSubmitModifierLabel,
-  isScreenSubmitShortcut
-} from '@/lib/keyboard/screen-submit-shortcut'
+import { isScreenSubmitShortcut } from '@/lib/keyboard/screen-submit-shortcut'
 import {
   GRAB_BUDGET,
   type BrowserAnnotationIntent,
@@ -19,6 +16,7 @@ import {
   BROWSER_ANNOTATION_INTENT_OPTIONS,
   type BrowserOverlayAnchor
 } from '../../describe-page/browser-annotation-geometry'
+import type { BrowserAnnotationDraft } from '../../describe-page/browser-page-types'
 import { useBrowserAnnotationImages } from './use-browser-annotation-images'
 import { BrowserAnnotationImageStrip } from './browser-annotation-image-strip'
 
@@ -28,6 +26,7 @@ export function PendingBrowserAnnotationCard({
   resolveAnchor,
   portalContainer,
   onAdd,
+  onDraftChange,
   onCancel
 }: {
   payload: BrowserGrabPayload
@@ -36,6 +35,8 @@ export function PendingBrowserAnnotationCard({
   resolveAnchor: (cardHeight: number | null) => BrowserOverlayAnchor
   portalContainer: HTMLElement | null
   onAdd: (comment: string, intent: BrowserAnnotationIntent, imagePaths: string[]) => void
+  /** Reports the note as typed so picking another element can save it; null when not addable. */
+  onDraftChange: (draft: BrowserAnnotationDraft | null) => void
   onCancel: () => void
 }): React.JSX.Element {
   const t = useTranslate()
@@ -57,14 +58,21 @@ export function PendingBrowserAnnotationCard({
     useBrowserAnnotationImages(worktreeId)
   const trimmed = comment.trim()
   const canAdd = Boolean(trimmed) && !saving
-  const submitModifierLabel = getScreenSubmitModifierLabel()
+  useEffect(() => {
+    onDraftChange(canAdd ? { comment: trimmed, intent, imagePaths } : null)
+  }, [canAdd, imagePaths, intent, onDraftChange, trimmed])
 
   return (
     <Popover
       open
       onOpenChange={(open) => {
         if (!open) {
-          onCancel()
+          // Clicking away keeps a written note; only Cancel and Escape discard it.
+          if (canAdd) {
+            onAdd(trimmed, intent, imagePaths)
+          } else {
+            onCancel()
+          }
         }
       }}
     >
@@ -125,7 +133,13 @@ export function PendingBrowserAnnotationCard({
               onCancel()
               return
             }
-            if (isScreenSubmitShortcut(event)) {
+            // Enter adds the note; Shift+Enter starts a new line.
+            const isPlainEnter =
+              event.key === 'Enter' &&
+              !event.shiftKey &&
+              !event.altKey &&
+              !event.nativeEvent.isComposing
+            if (isPlainEnter || isScreenSubmitShortcut(event)) {
               event.preventDefault()
               event.stopPropagation()
               if (canAdd) {
@@ -175,8 +189,7 @@ export function PendingBrowserAnnotationCard({
           >
             <MessageSquarePlus className="size-3.5" />
             {t('auto.components.browser.pane.BrowserPane.90d021f2ad', 'Add')}
-            <span className="ml-1 inline-flex items-center gap-0.5 rounded border border-white/20 px-1.5 py-0.5 text-[10px] font-medium leading-none text-current/80">
-              <span>{submitModifierLabel}</span>
+            <span className="ml-1 inline-flex items-center rounded border border-white/20 px-1.5 py-0.5 text-[10px] font-medium leading-none text-current/80">
               <CornerDownLeft className="size-3" />
             </span>
           </Button>

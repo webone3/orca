@@ -120,7 +120,16 @@ export type BrowserSetGrabModeResult = { ok: true } | { ok: false; reason: Brows
 export type BrowserAwaitGrabSelectionArgs = {
   browserPageId: string
   opId: string
+  /** Keep the page's clicks held after a pick so the next click picks another element. */
+  holdAfterPick?: boolean
+  /** The picker is already holding a selection; a timeout must not remove its outline. */
+  heldSelection?: boolean
 }
+
+export type BrowserGrabSelectionHold = Pick<
+  BrowserAwaitGrabSelectionArgs,
+  'holdAfterPick' | 'heldSelection'
+>
 
 export type BrowserCancelGrabArgs = {
   browserPageId: string
