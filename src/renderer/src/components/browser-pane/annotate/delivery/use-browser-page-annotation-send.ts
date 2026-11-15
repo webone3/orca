@@ -13,6 +13,7 @@ import {
   useNotesInFlightVersion
 } from '@/components/notes/delivery/notes-send-in-flight'
 import { recomputeOn } from '@/lib/recompute-on'
+import { sendNotesToDirectTarget } from '@/components/editor/review-note-delivery/send-notes-to-direct-target'
 
 export function useBrowserPageAnnotationSend({
   browserTabId,
@@ -41,6 +42,8 @@ export function useBrowserPageAnnotationSend({
   ) => void
   handleBrowserAnnotationsSentToAgent: () => void
   handleBrowserAnnotationsHandedOff: (delivered: Promise<unknown>) => void
+  /** Sends every unsent note now: straight to the obvious agent, else through the picker. */
+  sendBrowserAnnotationsNow: () => void
   activeGroupId: string | undefined
 } {
   const browserAnnotations = useAppStore(
@@ -137,7 +140,17 @@ export function useBrowserPageAnnotationSend({
   }, [browserTabId, clearBrowserPageAnnotations, recordFeatureInteraction])
 
   const openAnnotationSendTargetMode = useCallback(
-    (modeId: string, prompt: string): void => {
+    (
+      modeId: string,
+      prompt: string,
+      callbacks: {
+        onPromptDelivered: () => void
+        onPromptHandedOff: (delivered: Promise<unknown>) => void
+      } = {
+        onPromptDelivered: handleBrowserAnnotationsSentToAgent,
+        onPromptHandedOff: handleBrowserAnnotationsHandedOff
+      }
+    ): void => {
       openAgentSendPopoverTargetMode({
         id: modeId,
         worktreeId,
@@ -148,8 +161,7 @@ export function useBrowserPageAnnotationSend({
           'Browser annotations'
         ),
         launchSource: 'notes_send',
-        onPromptDelivered: handleBrowserAnnotationsSentToAgent,
-        onPromptHandedOff: handleBrowserAnnotationsHandedOff
+        ...callbacks
       })
     },
     [
@@ -167,13 +179,62 @@ export function useBrowserPageAnnotationSend({
         if (!browserAnnotationsPrompt) {
           return
         }
-        openAnnotationSendTargetMode(modeId, browserAnnotationsPrompt)
+        // One obvious agent needs no picker; the menu stays closed and the notes just go.
+        const callbacks = {
+          onPromptDelivered: handleBrowserAnnotationsSentToAgent,
+          onPromptHandedOff: handleBrowserAnnotationsHandedOff
+        }
+        if (
+          !sendNotesToDirectTarget({ worktreeId, prompt: browserAnnotationsPrompt, ...callbacks })
+        ) {
+          openAnnotationSendTargetMode(modeId, browserAnnotationsPrompt)
+        }
       } else {
         closeAgentSendPopoverTargetMode(modeId)
       }
     },
-    [browserAnnotationsPrompt, closeAgentSendPopoverTargetMode, openAnnotationSendTargetMode]
+    [
+      browserAnnotationsPrompt,
+      closeAgentSendPopoverTargetMode,
+      handleBrowserAnnotationsHandedOff,
+      handleBrowserAnnotationsSentToAgent,
+      openAnnotationSendTargetMode,
+      worktreeId
+    ]
   )
+
+  const sendBrowserAnnotationsNow = useCallback((): void => {
+    // Read the store: a note added in this same event is not in this render's list yet.
+    const annotations = (
+      useAppStore.getState().browserAnnotationsByPageId[browserTabId] ?? EMPTY_BROWSER_ANNOTATIONS
+    ).filter((annotation) => !isNoteInFlight(annotation))
+    const prompt = formatBrowserAnnotationsAsMarkdown(annotations, {
+      includeDiagnostics: includePageDetails
+    })
+    if (!prompt) {
+      return
+    }
+    const onPromptDelivered = (): void => {
+      recordFeatureInteraction('browser-annotations-sent-to-agent')
+      removeDeliveredBrowserPageAnnotations(browserTabId, annotations)
+    }
+    const callbacks = {
+      onPromptDelivered,
+      onPromptHandedOff: (delivered: Promise<unknown>): void =>
+        holdNotesForSend(annotations, delivered, onPromptDelivered)
+    }
+    if (!sendNotesToDirectTarget({ worktreeId, prompt, ...callbacks })) {
+      openAnnotationSendTargetMode(annotationTraySendModeId, prompt, callbacks)
+    }
+  }, [
+    annotationTraySendModeId,
+    browserTabId,
+    includePageDetails,
+    openAnnotationSendTargetMode,
+    recordFeatureInteraction,
+    removeDeliveredBrowserPageAnnotations,
+    worktreeId
+  ])
 
   const handleIncludePageDetailsChange = useCallback(
     (include: boolean): void => {
@@ -256,6 +317,7 @@ export function useBrowserPageAnnotationSend({
     handleUpdateBrowserAnnotation,
     handleBrowserAnnotationsSentToAgent,
     handleBrowserAnnotationsHandedOff,
+    sendBrowserAnnotationsNow,
     activeGroupId
   }
 }

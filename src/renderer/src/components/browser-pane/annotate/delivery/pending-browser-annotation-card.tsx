@@ -1,6 +1,6 @@
 import { ImeTextarea } from '@/lib/text-input/ime/ime-text-field'
 import { useEffect, useState } from 'react'
-import { CornerDownLeft, MessageSquarePlus } from 'lucide-react'
+import { CornerDownLeft, MessageSquarePlus, Send } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { Label } from '@/components/ui/label'
@@ -25,6 +25,7 @@ export function PendingBrowserAnnotationCard({
   worktreeId,
   resolveAnchor,
   portalContainer,
+  sendsOnAdd = false,
   onAdd,
   onDraftChange,
   onCancel
@@ -34,6 +35,8 @@ export function PendingBrowserAnnotationCard({
   /** Anchor for a card of the given measured height; null until the card has rendered once. */
   resolveAnchor: (cardHeight: number | null) => BrowserOverlayAnchor
   portalContainer: HTMLElement | null
+  /** Batch mode is off: adding the note also sends it, so the button says so. */
+  sendsOnAdd?: boolean
   onAdd: (comment: string, intent: BrowserAnnotationIntent, imagePaths: string[]) => void
   /** Reports the note as typed so picking another element can save it; null when not addable. */
   onDraftChange: (draft: BrowserAnnotationDraft | null) => void
@@ -187,8 +190,14 @@ export function PendingBrowserAnnotationCard({
             disabled={!canAdd}
             onClick={() => onAdd(trimmed, intent, imagePaths)}
           >
-            <MessageSquarePlus className="size-3.5" />
-            {t('auto.components.browser.pane.BrowserPane.90d021f2ad', 'Add')}
+            {sendsOnAdd ? (
+              <Send className="size-3.5" />
+            ) : (
+              <MessageSquarePlus className="size-3.5" />
+            )}
+            {sendsOnAdd
+              ? t('auto.components.browser.pane.BrowserPane.ac39b9366b', 'Send')
+              : t('auto.components.browser.pane.BrowserPane.90d021f2ad', 'Add')}
             <span className="ml-1 inline-flex items-center rounded border border-white/20 px-1.5 py-0.5 text-[10px] font-medium leading-none text-current/80">
               <CornerDownLeft className="size-3" />
             </span>

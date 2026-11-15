@@ -9,6 +9,11 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useTranslate } from '@/i18n/use-translate'
+import { Switch } from '@/components/ui/switch'
+import {
+  setBrowserAnnotationBatchMode,
+  useBrowserAnnotationBatchMode
+} from '../../annotate/delivery/browser-annotation-batch-mode'
 import {
   BrowserAnnotationSendMenuContent,
   browserAnnotationCopyTooltip
@@ -64,6 +69,7 @@ export function BrowserPageChromeBanners({
   setPendingAnnotationPayload: Dispatch<SetStateAction<BrowserGrabPayload | null>>
 }): React.JSX.Element | null {
   const t = useTranslate()
+  const batchMode = useBrowserAnnotationBatchMode()
   if (!resourceNotice && grab.state === 'idle') {
     return null
   }
@@ -137,6 +143,32 @@ export function BrowserPageChromeBanners({
                       'Click or hover an element, then press C to copy or S to screenshot.'
                     )}
           </span>
+          {grabIntent === 'annotate' && grab.state !== 'error' ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">
+                  <Switch
+                    checked={batchMode}
+                    onCheckedChange={setBrowserAnnotationBatchMode}
+                    className="h-3.5 w-6 border-0 p-0.5"
+                    thumbClassName="size-2.5 data-[state=checked]:translate-x-2.5"
+                  />
+                  {t('components.browser-pane.annotate.batchMode', 'Batch')}
+                </label>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" sideOffset={6}>
+                {batchMode
+                  ? t(
+                      'components.browser-pane.annotate.batchModeOn',
+                      'Notes collect until you press Send'
+                    )
+                  : t(
+                      'components.browser-pane.annotate.batchModeOff',
+                      'Each note is sent as soon as you write it'
+                    )}
+              </TooltipContent>
+            </Tooltip>
+          ) : null}
           {grabIntent === 'annotate' && browserAnnotationsLength > 0 ? (
             <>
               <DropdownMenu

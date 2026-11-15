@@ -4,6 +4,7 @@ import {
   useAppStateViewActive
 } from '@/store/retained-views/app-state-view'
 import { toast } from 'sonner'
+import { runNotesSendWithToast, type NotesSendRunOptions } from './run-notes-send'
 import { shallow } from 'zustand/shallow'
 import { useShallow } from 'zustand/react/shallow'
 import {
@@ -136,56 +137,8 @@ export function ReviewNotesSendMenuContent({
     (
       send: () => Promise<ActiveAgentNotesSendResult>,
       onSent: () => void,
-      options: { explicitTarget?: boolean; structured?: boolean } = {}
-    ) => {
-      // Settle the loading toast in place: immediate sends can resolve before Sonner mounts, racing a separate dismissal.
-      const pending = toast.loading(
-        translate(
-          'auto.components.editor.ReviewNotesSendMenuContent.50f7e753ea',
-          'Sending notes...'
-        )
-      )
-
-      const sending = send()
-        .then((result) => {
-          if (result.status === 'sent') {
-            onSent()
-            toast.success(
-              translate(
-                'auto.components.editor.ReviewNotesSendMenuContent.bb9c69a0c9',
-                'Notes sent.'
-              ),
-              { id: pending }
-            )
-            return
-          }
-
-          if (options.structured && result.status === 'unconfirmed') {
-            toast.dismiss(pending)
-            return
-          }
-
-          // Use a typed toast update; toast.message preserves the loading spinner.
-          toast.info(
-            activeAgentNotesSendFailureMessage(result.status, {
-              explicitTarget: options.explicitTarget,
-              code: result.code
-            }),
-            { id: pending }
-          )
-        })
-        .catch(() => {
-          console.error('Failed to send notes:', { code: 'runtime-unverifiable' })
-          toast.error(
-            activeAgentNotesSendFailureMessage('status-unavailable', {
-              explicitTarget: options.explicitTarget,
-              code: 'runtime-unverifiable'
-            }),
-            { id: pending }
-          )
-        })
-      onPromptHandedOff?.(sending)
-    },
+      options: NotesSendRunOptions = {}
+    ) => runNotesSendWithToast(send, onSent, options, onPromptHandedOff),
     [onPromptHandedOff]
   )
 

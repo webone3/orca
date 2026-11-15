@@ -19,6 +19,7 @@ import {
 } from '../describe-page/browser-annotation-geometry'
 import { BrowserPageAnnotationTray } from './browser-page-annotation-tray'
 import { BrowserPageGrabToast } from './grab/browser-page-grab-toast'
+import { useBrowserAnnotationBatchMode } from './delivery/browser-annotation-batch-mode'
 import { PendingBrowserAnnotationCard } from './delivery/pending-browser-annotation-card'
 import type { useBrowserPageAnnotationSend } from './delivery/use-browser-page-annotation-send'
 import type { useBrowserPageGrabAnnotations } from './grab/use-browser-page-grab-annotations'
@@ -66,6 +67,7 @@ export function BrowserGuestAnnotateOverlays({
     setGrabToast
   } = grabAnnotations
   const markupTarget = markupPortalContainer ?? containerRef.current
+  const batchMode = useBrowserAnnotationBatchMode()
   const {
     browserAnnotations,
     annotationTraySendOpen,
@@ -76,6 +78,7 @@ export function BrowserGuestAnnotateOverlays({
     handleIncludePageDetailsChange,
     handleBrowserAnnotationsSentToAgent,
     handleBrowserAnnotationsHandedOff,
+    sendBrowserAnnotationsNow,
     handleCopyBrowserAnnotations,
     browserAnnotationsCopied,
     handleClearBrowserAnnotations,
@@ -113,7 +116,13 @@ export function BrowserGuestAnnotateOverlays({
             )
           }
           portalContainer={containerRef.current}
-          onAdd={handleAddBrowserAnnotation}
+          sendsOnAdd={!batchMode}
+          onAdd={(comment, intent, imagePaths) => {
+            handleAddBrowserAnnotation(comment, intent, imagePaths)
+            if (!batchMode) {
+              sendBrowserAnnotationsNow()
+            }
+          }}
           onDraftChange={handlePendingBrowserAnnotationDraftChange}
           onCancel={handleCancelPendingBrowserAnnotation}
         />
