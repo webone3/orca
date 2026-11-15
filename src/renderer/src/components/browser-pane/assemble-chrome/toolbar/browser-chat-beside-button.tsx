@@ -1,4 +1,4 @@
-import { PanelRight } from 'lucide-react'
+import { PanelLeft, PanelRight } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -10,8 +10,26 @@ import { getStructuredChatTabNames } from '@/runtime/native-chat/naming/structur
 import { useAppStore } from '@/store/index'
 import { isFloatingWorkspaceId } from '../../../../../../shared/floating-workspace-worktree'
 import { planChatBesideBrowser } from './chat-beside-browser'
+import {
+  getChatBesideBrowserSide,
+  setChatBesideBrowserSide,
+  useChatBesideBrowserSide,
+  type ChatBesideBrowserSide
+} from './chat-beside-browser-side'
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuRadioGroup,
+  ContextMenuRadioItem,
+  ContextMenuTrigger
+} from '@/components/ui/context-menu'
 
-function toggleChatBesideBrowser(worktreeId: string, browserPageId: string): void {
+/** `moveToSide` places the chat on the chosen side even when it is already showing. */
+function toggleChatBesideBrowser(
+  worktreeId: string,
+  browserPageId: string,
+  moveToSide = false
+): void {
   const state = useAppStore.getState()
   const browserTab = resolveBrowserSourceUnifiedTab(state, browserPageId, worktreeId)
   if (!browserTab) {
@@ -35,13 +53,19 @@ function toggleChatBesideBrowser(worktreeId: string, browserPageId: string): voi
   )
   const plan = planChatBesideBrowser(state, worktreeId, browserTab.groupId, chatTabIds)
   if (!plan) {
+    if (moveToSide) {
+      return
+    }
     toast.message(
       translate('components.browser-pane.chatBeside.noChat', 'Open a chat in this workspace first.')
     )
     return
   }
-  if (plan.kind === 'show') {
-    state.dropUnifiedTab(plan.chatTabId, { groupId: browserTab.groupId, splitDirection: 'right' })
+  if (plan.kind === 'show' || moveToSide) {
+    state.dropUnifiedTab(plan.chatTabId, {
+      groupId: browserTab.groupId,
+      splitDirection: getChatBesideBrowserSide()
+    })
   } else {
     state.moveUnifiedTabToGroup(plan.chatTabId, browserTab.groupId, { activate: false })
   }
@@ -57,6 +81,7 @@ export function BrowserChatBesideButton({
   browserPageId: string
 }): React.JSX.Element | null {
   const t = useTranslate()
+  const side = useChatBesideBrowserSide()
   // Document previews borrow this toolbar without owning a workspace tab to split from.
   const hasWorkspaceTab = useAppStore(
     (state) => resolveBrowserSourceUnifiedTab(state, browserPageId, worktreeId) != null
@@ -66,22 +91,47 @@ export function BrowserChatBesideButton({
     return null
   }
   const label = t('components.browser-pane.chatBeside.label', 'Chat beside page')
+  const Icon = side === 'left' ? PanelLeft : PanelRight
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          size="icon"
-          variant="ghost"
-          className="h-7 w-7 shrink-0"
-          aria-label={label}
-          onClick={() => toggleChatBesideBrowser(worktreeId, browserPageId)}
+    <ContextMenu>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <ContextMenuTrigger asChild>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-7 w-7 shrink-0"
+              aria-label={label}
+              onClick={() => toggleChatBesideBrowser(worktreeId, browserPageId)}
+            >
+              <Icon className="size-4" />
+            </Button>
+          </ContextMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" sideOffset={6}>
+          {t(
+            'components.browser-pane.chatBeside.tooltip',
+            'Chat beside page · right-click to choose the side'
+          )}
+        </TooltipContent>
+      </Tooltip>
+      <ContextMenuContent>
+        <ContextMenuRadioGroup
+          value={side}
+          onValueChange={(value) => {
+            setChatBesideBrowserSide(value as ChatBesideBrowserSide)
+            // Choosing a side puts the chat there, whether or not it was showing.
+            toggleChatBesideBrowser(worktreeId, browserPageId, true)
+          }}
         >
-          <PanelRight className="size-4" />
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent side="bottom" sideOffset={6}>
-        {label}
-      </TooltipContent>
-    </Tooltip>
+          <ContextMenuRadioItem value="left">
+            {t('components.browser-pane.chatBeside.left', 'Chat on the left')}
+          </ContextMenuRadioItem>
+          <ContextMenuRadioItem value="right">
+            {t('components.browser-pane.chatBeside.right', 'Chat on the right')}
+          </ContextMenuRadioItem>
+        </ContextMenuRadioGroup>
+      </ContextMenuContent>
+    </ContextMenu>
   )
 }
