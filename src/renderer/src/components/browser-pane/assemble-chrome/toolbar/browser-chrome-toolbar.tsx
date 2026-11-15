@@ -16,6 +16,7 @@ import {
   type BrowserChromeMarkupTool,
   type BrowserChromeNoteActions
 } from './browser-annotate-split-button'
+import { BrowserChatBesideButton } from './browser-chat-beside-button'
 import { useFloatingSplitBrowserClose } from './use-floating-split-browser-close'
 
 export type BrowserChromeToolAction = {
@@ -113,6 +114,10 @@ export function BrowserChromeToolbar({
       showTourAnchors={showTourAnchors}
     >
       {shareControl}
+      <BrowserChatBesideButton
+        worktreeId={closeTabOwner.worktreeId}
+        browserPageId={closeTabOwner.browserPageId}
+      />
       <BrowserAnnotateSplitButton
         tools={elementTools}
         markup={markup}
