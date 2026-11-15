@@ -1,3 +1,4 @@
+import { retainAuthFilesystemOperation } from './auth-filesystem-ownership'
 import { parseWslUncPath } from '../../../shared/file-access/wsl-paths'
 import { PromiseSettlementWaiters } from '../../../shared/concurrency/promise-settlement-waiters'
 
@@ -134,6 +135,7 @@ export function createAuthFilesystemOperation<T>(
   const waiters = new Set<symbol>()
   let settled = false
   const result = scheduleAuthFilesystemOperation(authPath, neededController.signal, operation)
+  retainAuthFilesystemOperation(result)
   const settlementWaiters = new PromiseSettlementWaiters(result, () => {
     settled = true
   })
@@ -141,6 +143,7 @@ export function createAuthFilesystemOperation<T>(
   return {
     result,
     wait(signal) {
+      retainAuthFilesystemOperation(result)
       if (signal.aborted) {
         if (!settled && waiters.size === 0) {
           neededController.abort(getAbortReason(signal))

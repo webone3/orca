@@ -1,4 +1,8 @@
 import {
+  readAuthFileStat,
+  readAuthTextFile
+} from '../../rate-limits/providers/auth-filesystem-reads'
+import {
   existsSync,
   lstatSync,
   readdirSync,
@@ -7,7 +11,6 @@ import {
   statSync,
   unlinkSync
 } from 'node:fs'
-import { readFile, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { z } from 'zod'
@@ -52,7 +55,7 @@ export async function claudeStateFileAsync(
   userHome = homedir()
 ): Promise<string> {
   const legacy = claudeStateFile(configDir, userHome, () => true)
-  return (await stat(legacy).catch(() => null))
+  return (await readAuthFileStat(legacy).catch(() => null))
     ? legacy
     : claudeStateFile(configDir, userHome, () => false)
 }
@@ -121,7 +124,7 @@ const pendingLogins = new Map<
 export async function readClaudeFolderLoginAsync(
   stateFile: string
 ): Promise<ClaudeFolderLogin | null> {
-  const current = await stat(stateFile).catch(() => null)
+  const current = await readAuthFileStat(stateFile).catch(() => null)
   if (!current) {
     logins.delete(stateFile)
     pendingLogins.delete(stateFile)
@@ -148,7 +151,7 @@ export async function readClaudeFolderLoginAsync(
 
 async function readStateLogin(stateFile: string): Promise<ClaudeFolderLogin | null> {
   try {
-    const state: unknown = JSON.parse(await readFile(stateFile, 'utf8'))
+    const state: unknown = JSON.parse(await readAuthTextFile(stateFile))
     if (state && typeof state === 'object' && !Array.isArray(state)) {
       return claudeStateLogin(Object.fromEntries(Object.entries(state)))
     }

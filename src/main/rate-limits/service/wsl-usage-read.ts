@@ -20,10 +20,16 @@ export type WslProviderRead = {
   limits: ProviderRateLimits | null
   credential: { path: string; generation: string } | null
   retry: boolean
+  confirm?: () => Promise<boolean>
 }
 export type WslUsageRead = { claude: WslProviderRead; codex: WslProviderRead }
 export type WslReadProviders = { claude: boolean; codex: boolean }
-const unavailable: WslProviderRead = { limits: null, credential: null, retry: false }
+export const unavailableWslProvider: WslProviderRead = {
+  limits: null,
+  credential: null,
+  retry: false
+}
+const unavailable = unavailableWslProvider
 
 async function readCredentialUsage(
   path: string,
@@ -35,6 +41,9 @@ async function readCredentialUsage(
     return { ...unavailable, retry: true }
   }
   const limits = await fetch().catch(() => null)
+  if (signal.aborted) {
+    return unavailable
+  }
   const after = await wslCredentialGeneration(path, signal)
   if (!after || before !== after || signal.aborted) {
     return { ...unavailable, retry: true }
@@ -56,13 +65,11 @@ export async function readWslUsage(
         return unavailable
       }
       const auth = await sources.claude()
-      const expected = scope.claudeId ? `profile:${scope.claudeId}:wsl:` : 'wsl:'
       if (
         !auth ||
         auth.runtime !== 'wsl' ||
         claudeAccountDistroKey(auth.wslDistro) !== claudeAccountDistroKey(distro) ||
-        !auth.provenance.startsWith(expected) ||
-        (!scope.claudeId && auth.provenance !== `wsl:${auth.wslDistro}:system`) ||
+        !matchesClaudeSelection(auth, scope) ||
         !sources.current() ||
         signal.aborted
       ) {
@@ -80,12 +87,17 @@ export async function readWslUsage(
           }),
         signal
       )
-      const after = await sources.claude()
-      return sources.current() &&
-        after?.provenance === auth.provenance &&
-        after.configDir === auth.configDir
-        ? reading
-        : unavailable
+      const confirm = async () => {
+        const after = await sources.claude()
+        return (
+          sources.current() &&
+          after !== undefined &&
+          matchesClaudeSelection(after, scope) &&
+          after.provenance === auth.provenance &&
+          after.configDir === auth.configDir
+        )
+      }
+      return (await confirm()) ? { ...reading, confirm } : unavailable
     })().catch(() => unavailable),
     (async () => {
       if (!providers.codex || !scope.codexAllowed) {
@@ -114,10 +126,11 @@ export async function readWslUsage(
           }),
         signal
       )
-      const after = await sources.codex()
-      return sources.current() && !after.skip && after.homePath === home.homePath
-        ? reading
-        : unavailable
+      const confirm = async () => {
+        const after = await sources.codex()
+        return sources.current() && !after.skip && after.homePath === home.homePath
+      }
+      return (await confirm()) ? { ...reading, confirm } : unavailable
     })().catch(() => unavailable)
   ])
   return { claude, codex }
@@ -129,6 +142,7 @@ export async function unconfirmedWslProviders(
 ): Promise<WslReadProviders> {
   const unconfirmed = async (provider: WslProviderRead) =>
     provider.retry ||
+    (!!provider.confirm && !(await provider.confirm())) ||
     (!!provider.credential &&
       (await wslCredentialGeneration(provider.credential.path, signal)) !==
         provider.credential.generation)
@@ -137,4 +151,15 @@ export async function unconfirmedWslProviders(
     unconfirmed(reading.codex)
   ])
   return { claude, codex }
+}
+
+function matchesClaudeSelection(auth: ClaudeRuntimeAuthPreparation, scope: WslUsageScope): boolean {
+  const system = auth.provenance === `wsl:${auth.wslDistro}:system`
+  if (!scope.claudeId) {
+    return system && !auth.selectedAccountId
+  }
+  return (
+    auth.provenance === `profile:${scope.claudeId}:wsl:${auth.wslDistro}` ||
+    (system && auth.selectedAccountId === scope.claudeId)
+  )
 }

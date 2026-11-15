@@ -1,5 +1,6 @@
+import { readAuthFileLstat } from '../../../rate-limits/providers/auth-filesystem-reads'
 import { existsSync } from 'node:fs'
-import { lstat, readFile } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
 import { join, posix } from 'node:path'
 import { getAppEnvironment } from '../../../../shared/app-environment'
 import {
@@ -174,9 +175,12 @@ export class ClaudeWslProfileRouter {
   }
 
   async preparation(distro: string): Promise<ClaudeRuntimeAuthPreparation> {
-    const { home, profile } = await this.resolve(distro)
+    const { home, selected, profile } = await this.resolve(distro)
     await this.assertPresent(distro, profile)
-    return this.preparationFor(distro, home, profile)
+    return {
+      ...this.preparationFor(distro, home, profile),
+      selectedAccountId: selected?.accountId ?? null
+    }
   }
 
   async prepareAccount(distro: string, accountId: string): Promise<string> {
@@ -245,7 +249,8 @@ function guestLogin(distro: string, stateFile: string): Promise<ClaudeFolderLogi
 
 // Read over the share to avoid spawning a guest process for stats.
 async function guestStat(distro: string, linuxPath: string) {
-  return lstat(toWindowsWslPath(linuxPath, distro)).catch(() => null)
+  const path = toWindowsWslPath(linuxPath, distro)
+  return readAuthFileLstat(path).catch(() => null)
 }
 
 async function hasMarker(distro: string, profile: ClaudeProfileDescriptor): Promise<boolean> {

@@ -146,6 +146,24 @@ describe.skipIf(!posixHost)('ClaudeWslProfileRouter', () => {
     expect(readFileSync(f.pointer, 'utf8')).toBe(homeB)
   })
 
+  it.each(['a@example.test', 'other@example.test'])(
+    'attributes the selected account when System default is %s',
+    async (email) => {
+      const f = fixture()
+      mkdirSync(f.profileHome, { recursive: true })
+      writeFileSync(
+        join(guest.home, '.claude.json'),
+        JSON.stringify({
+          oauthAccount: { emailAddress: email }
+        })
+      )
+      await expect(f.router.preparation('Ubuntu')).resolves.toMatchObject({
+        selectedAccountId: 'a',
+        provenance: email === 'a@example.test' ? 'wsl:Ubuntu:system' : 'profile:a:wsl:Ubuntu'
+      })
+    }
+  )
+
   it('launches on System default while a managed WSL account still exists', async () => {
     const f = fixture()
     mkdirSync(join(f.pointer, '..'), { recursive: true })

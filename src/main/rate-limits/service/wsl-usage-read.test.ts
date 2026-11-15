@@ -1,4 +1,4 @@
-import { beforeEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { GlobalSettings } from '../../../shared/global-settings-types'
 import { getDefaultSettings } from '../../../shared/constants'
 import { wslUsageScope } from '../../../shared/wsl-usage-scope'
@@ -14,6 +14,8 @@ vi.mock('../providers/grok/grok-auth', () => ({
   readGrokAuthSession: () => ({ status: 'missing' })
 }))
 vi.mock('./wsl-credential-generation', () => ({ wslCredentialGeneration: mocks.generation }))
+
+afterEach(() => vi.restoreAllMocks())
 
 const generations: Record<string, string | null> = { claude: 'c1', codex: 'x1' }
 function settings(): GlobalSettings {
@@ -202,7 +204,7 @@ it('does not retain a failed provider result', async () => {
   expect((await read(value, 'activation'))?.claude).toBeNull()
   expect((await read(value, 'activation'))?.claude?.session?.usedPercent).toBe(7)
 })
-it('uses a fresh explicit-refresh read instead of an older in-flight activation', async () => {
+it('skips an unsettled provider on explicit refresh and reads fresh after settlement', async () => {
   const started = deferred<void>()
   const oldReply = deferred<ReturnType<typeof okProvider>>()
   mocks.claude
@@ -214,9 +216,10 @@ it('uses a fresh explicit-refresh read instead of an older in-flight activation'
   const value = service()
   const old = read(value, 'activation')
   await started.promise
-  expect((await read(value, 'explicit-refresh'))?.claude?.session?.usedPercent).toBe(7)
+  expect((await read(value, 'explicit-refresh'))?.claude).toBeNull()
   oldReply.resolve(okProvider('claude', 99))
   await old
+  expect((await read(value, 'next-refresh'))?.claude?.session?.usedPercent).toBe(7)
 })
 it('keeps A-B-A activations separate even when the first A reply arrives last', async () => {
   const started = deferred<void>()
@@ -233,8 +236,87 @@ it('keeps A-B-A activations separate even when the first A reply arrives last', 
   await started.promise
   expect((await read(value, 'B-2', 'Debian'))?.claude?.session?.usedPercent).toBe(43)
   const newA = await read(value, 'A-3')
-  expect(newA?.claude?.session?.usedPercent).toBe(7)
+  expect(newA?.claude).toBeNull()
   oldReply.resolve(okProvider('claude', 99))
   await firstA
-  expect(newA?.claude?.session?.usedPercent).toBe(7)
+  expect(newA?.claude).toBeNull()
+  expect((await read(value, 'A-4'))?.claude?.session?.usedPercent).toBe(7)
+})
+
+it.each(['initial', 'retry'] as const)(
+  'keeps healthy Codex usage when Claude times out during the %s read',
+  async (stage) => {
+    const deadlines = new Map<AbortSignal, AbortController>()
+    const originalTimeout = AbortSignal.timeout
+    vi.spyOn(AbortSignal, 'timeout').mockImplementation((ms) => {
+      if (ms !== 30_000) {
+        return originalTimeout(ms)
+      }
+      const controller = new AbortController()
+      deadlines.set(controller.signal, controller)
+      return controller.signal
+    })
+    const stalled = deferred<ReturnType<typeof okProvider>>()
+    const started = deferred<AbortSignal>()
+    const codexReady = deferred<void>()
+    const value = service()
+    value.setCodexHomePathResolver(
+      vi
+        .fn()
+        .mockReturnValueOnce({
+          kind: 'ready',
+          codexHomePath: '//wsl.localhost/Ubuntu/home/a/.codex'
+        })
+        .mockImplementation(() => {
+          codexReady.resolve()
+          return { kind: 'ready', codexHomePath: '//wsl.localhost/Ubuntu/home/a/.codex' }
+        })
+    )
+    if (stage === 'retry') {
+      mocks.claude.mockImplementationOnce(async () => {
+        generations.claude = 'replaced'
+        return okProvider('claude', 99)
+      })
+    }
+    mocks.claude.mockImplementationOnce(({ signal }) => {
+      started.resolve(signal)
+      return stalled.promise
+    })
+    const pending = read(value, 'timeout')
+    const signal = await started.promise
+    await codexReady.promise
+    deadlines.get(signal)!.abort(new Error('provider deadline'))
+    const result = await pending
+    expect(result?.claude).toBeNull()
+    expect(result?.codex?.session?.usedPercent).toBe(23)
+    expect((await read(value, 'while-stalled'))?.claude).toBeNull()
+    stalled.resolve(okProvider('claude', 99))
+  }
+)
+
+it('accepts a selected managed login proven covered by System default', async () => {
+  const value = service()
+  value.setClaudeAuthPreparationResolver(async () => ({
+    ...preparation('Ubuntu'),
+    provenance: 'wsl:Ubuntu:system',
+    selectedAccountId: 'a'
+  }))
+  expect((await read(value, 'covered'))?.claude?.session?.usedPercent).toBe(17)
+})
+it('rejects an unrelated System default login and a changed covered attribution', async () => {
+  const value = service()
+  const covered = {
+    ...preparation('Ubuntu'),
+    provenance: 'wsl:Ubuntu:system',
+    selectedAccountId: 'a'
+  }
+  value.setClaudeAuthPreparationResolver(async () => ({ ...covered, selectedAccountId: 'b' }))
+  expect((await read(value, 'wrong-system'))?.claude).toBeNull()
+  value.setClaudeAuthPreparationResolver(
+    vi
+      .fn()
+      .mockResolvedValueOnce(covered)
+      .mockResolvedValue({ ...covered, selectedAccountId: 'b' })
+  )
+  expect((await read(value, 'changed-system'))?.claude).toBeNull()
 })
