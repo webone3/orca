@@ -22,6 +22,7 @@ import { BrowserProfileScopeSetting } from './profiles/BrowserProfileScopeSettin
 import { BrowserUserAgentSetting } from './BrowserUserAgentSetting'
 import { BrowserSitePermissionsSetting } from './BrowserSitePermissionsSetting'
 import { SettingsGroup } from '../section-layout/SettingsGroup'
+import { BrowserDevServerAutoOpenSetting } from './routing/BrowserDevServerAutoOpenSetting'
 import { BrowserSessionCookiesSection } from './profiles/BrowserSessionCookiesSection'
 import { BrowserNewProfileDialog } from './profiles/BrowserNewProfileDialog'
 import { BrowserExtensionsSection } from './extensions/BrowserExtensionsSection'
@@ -335,6 +336,10 @@ export function BrowserPane({
           ) : null}
         </SettingsGroup>
       ) : null}
+
+      <SettingsGroup>
+        <BrowserDevServerAutoOpenSetting settings={settings} updateSettings={updateSettings} />
+      </SettingsGroup>
 
       {showTerminalLinkActions ? (
         <BrowserTerminalLinkActionsSetting

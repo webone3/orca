@@ -3,6 +3,7 @@ import { lazyWithRetry as lazy } from '@/app-shell/startup/lazy-with-retry'
 import { AgentHibernationGate } from '../components/AgentHibernationGate'
 import { AiVaultTabTitleSyncGate } from '../components/AiVaultTabTitleSyncGate'
 import { WorkspacePortScanner } from '../components/ports/WorkspacePortScanner'
+import { WorkspaceDevServerAutoOpen } from '../components/ports/WorkspaceDevServerAutoOpen'
 import { SavedHostScopeWidenGate } from '../components/sidebar/worktree-list/listing/SavedHostScopeWidenGate'
 import { MacosTccPromptNoticeHost } from '../hooks/MacosTccPromptNoticeHost'
 import { RemoteHostBrowserControlNoticeHost } from '../components/browser-pane/remote-host-control/RemoteHostBrowserControlNoticeHost'
@@ -34,6 +35,7 @@ export function AppBackgroundServices(): React.JSX.Element {
     <>
       <NativeChatVisualGuestThemePublisher />
       <WorkspacePortScanner enabled={workspaceSessionReady} />
+      <WorkspaceDevServerAutoOpen enabled={workspaceSessionReady} />
       <ActiveWorkspaceSyncGate />
       {/* Keep permission notices available across app surfaces. */}
       <MacosTccPromptNoticeHost />
